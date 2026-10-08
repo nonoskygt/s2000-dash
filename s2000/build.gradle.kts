@@ -19,7 +19,7 @@ android {
         applicationId = "com.nonosky.s2000dash"
         minSdk = 21
         targetSdk = 34
-        versionCode = 217
+        versionCode = 219
         versionName = "1.5-s2000"
     }
 

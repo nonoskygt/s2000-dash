@@ -32,6 +32,10 @@ class BootReceiver : BroadcastReceiver() {
         // diez minutos le quitaria el radio al conductor a media curva, que
         // seria mucho peor que el problema que resuelve.
         if (accion == DashService.ACCION_RESUCITAR) return
+        // Tras ACTUALIZARSE solo vuelve el servicio: una actualizacion no le
+        // quita la pantalla a lo que el dueño este viendo (un video, el mapa).
+        // El tablero se abre solo al ENCENDER el radio.
+        if (accion == Intent.ACTION_MY_PACKAGE_REPLACED) return
 
         // El dueño puede decir en Ajustes que el tablero NO se abra solo. El
         // servicio ya quedo arrancado arriba: alertas y lecturas siguen.
