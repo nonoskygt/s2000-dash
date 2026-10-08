@@ -1,0 +1,17 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Basura de herramientas, no del proyecto.
+.playwright-mcp/
+
+# Windows crea un fichero llamado `nul` cuando algo redirige a `2>nul` desde un
+# shell POSIX: alli `nul` no es el aparato nulo, es un nombre de fichero mas.
+nul

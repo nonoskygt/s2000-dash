@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Tema fijo oscuro y sin barra de titulo. El tablero pinta su propia
+      paleta en Canvas, asi que el tema solo tiene que quitarse de en medio
+      y no provocar un flash blanco al arrancar.
+    -->
+    <style name="Theme.Oscuro" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <!--
+      El tablero, con el fondo del radio asomando por detras.
+
+      Las tres piezas hacen falta juntas y en este orden:
+        windowShowWallpaper  deja ver el fondo de pantalla del sistema
+        windowIsTranslucent  permite que la ventana no sea opaca
+        windowBackground     transparente, o taparia el fondo igual
+
+      OJO con el equilibrio: esto es un tablero que se lee manejando y de
+      noche. La transparencia se paga en contraste, asi que el fondo asoma
+      SOLO entre tarjetas; el texto sigue sobre superficies casi opacas.
+      Ver el comentario del velo en tablero.html.
+    -->
+    <style name="Theme.Tablero" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

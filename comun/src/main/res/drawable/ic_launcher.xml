@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tacometro: arco de carátula, zona roja y aguja apuntando a la zona alta. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#07090C"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Carátula -->
+    <path
+        android:strokeColor="#1B2129"
+        android:strokeWidth="9"
+        android:strokeLineCap="butt"
+        android:fillColor="#00000000"
+        android:pathData="M30,74 A28,28 0 1 1 78,74" />
+
+    <!-- Zona roja -->
+    <path
+        android:strokeColor="#FF3B30"
+        android:strokeWidth="9"
+        android:strokeLineCap="butt"
+        android:fillColor="#00000000"
+        android:pathData="M70.5,37.5 A28,28 0 0 1 78,74" />
+
+    <!-- Aguja -->
+    <path
+        android:strokeColor="#F5F7FA"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M54,60 L69,42" />
+
+    <path
+        android:fillColor="#00C2FF"
+        android:pathData="M54,60m-6,0a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
+</vector>

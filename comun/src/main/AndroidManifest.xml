@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Modelo viejo: permisos normales, concedidos al instalar. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- Android 12+: permisos en tiempo de ejecucion. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+
+    <!--
+      Hasta API 30 Android exige ubicacion fina para barrer por Bluetooth:
+      sin ella startDiscovery no devuelve nada y parece que no hay adaptador.
+      De API 31 en adelante basta BLUETOOTH_SCAN con neverForLocation.
+    -->
+    <!--
+      Sin tope de version: ademas del barrido Bluetooth, ahora el GPS mide
+      los kilometros para la vida del aceite. El odometro no se puede leer de
+      la ECU de este carro —su mapa de PIDs se corta en el 0x20— asi que la
+      distancia hay que medirla por fuera, y eso hace falta en cualquier API.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Descargar el APK nuevo del servidor del taller. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Sin esto, Wi-Fi en ahorro de energia descarta las difusiones UDP. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!--
+      Instalar actualizaciones desde la propia app. Android sigue pidiendo
+      una confirmacion en pantalla; la contesta InstallAutoClickService.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Abrir el tablero al encender el carro; si no, tras cada reinicio
+         nadie revisa si hay actualizacion hasta que alguien toque el icono. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+        Sin esto, `setFullScreenIntent` se cae EN SILENCIO desde Android 10:
+        la llamada no falla, la notificacion sale, suena — y `dumpsys` dice
+        `fullscreenIntent=null`. Asi se descubrio, disparando la alerta de
+        prueba con el dueño al lado del radio.
+
+        El efecto: el aviso de llanta pinchada sonaba pero NO se apoderaba de
+        la pantalla. Yendo en el reproductor de musica, un pinchazo salia como
+        una tira arriba en vez de a pantalla completa.
+    -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+    <!-- Para poder LISTAR quien declara dibujar encima. Desde Android 11
+         la lista de paquetes viene filtrada y sin esto el culpable del
+         overlay es invisible. APK de fuera de la tienda: no hay politica de
+         Play que lo impida. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+    <!-- La bateria de litio habla Bluetooth LE, que es otra radio que la
+         clasica del adaptador OBD. Sin required: si un head unit no la trae,
+         el resto del tablero sigue sirviendo. -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- El receptor TPMS cuelga del USB. Enumerar no pide permiso; solo
+         abrir el aparato lo pide. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!--
+      Sin atributos a proposito: el nombre, el icono, el tema y la clase
+      Application los pone CADA app en su manifiesto. Aqui solo van los
+      componentes que las dos comparten.
+    -->
+    <application>
+
+        <!--
+          El tablero de cada app: su `assets/tablero.html` (WebView) o la
+          variante Canvas, segun ajustes. El HTML lo trae cada app, no esta
+          libreria.
+        -->
+        <activity
+            android:name=".TableroActivity"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:screenOrientation="landscape"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Tablero">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              El receptor TPMS por USB.
+
+              Sin esto el permiso hay que conceder a mano CADA vez que se
+              enchufa, y el servicio arranca antes de que nadie pueda
+              contestar el dialogo: el puente reportaba "SinPermiso" con el
+              receptor perfectamente enumerado. Con el filtro, Android ofrece
+              abrir el tablero al conectarlo y el permiso queda concedido de
+              forma permanente.
+            -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/tpms_usb" />
+        </activity>
+
+        <!--
+          Configuracion y emparejamiento. Decide QUE aparato hace cada papel:
+          baterias, refrigeradora y adaptador OBD. Se abre con el carro
+          parado, se usa y se cierra.
+        -->
+        <activity
+            android:name=".config.ConfiguracionActivity"
+            android:exported="false"
+            android:label="Configuración"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Oscuro" />
+
+        <!--
+          La pantalla de averias. APARTE del tablero a proposito: carga 36 KB
+          de tabla de codigos y abre su propia conexion al OBD, y nada de eso
+          hace falta mientras se maneja. Se abre a mano, se usa, se cierra, y
+          al cerrarse suelta la tabla.
+        -->
+        <activity
+            android:name=".diag.DiagnosticoActivity"
+            android:exported="false"
+            android:label="Diagnostico"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Oscuro" />
+
+        <!--
+          ESCANEAR CODIGO: el boton para leer el carro y la base de codigos de
+          motor y caja, con buscador. Lee su propia copia de la tabla.
+        -->
+        <activity
+            android:name=".diag.CodigosActivity"
+            android:exported="false"
+            android:label="Códigos"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Oscuro" />
+
+        <!--
+          Los codigos de la bolsa de aire (SRS). Aparte del diagnostico del
+          motor porque es OTRA computadora que el OBD-II no lee: aqui se
+          explica como sacar el codigo con la propia luz y que significa.
+        -->
+        <activity
+            android:name=".diag.BolsasDeAireActivity"
+            android:exported="false"
+            android:label="Bolsas de aire"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Oscuro" />
+
+        <!-- Sostiene el puente de diagnostico y la revision de
+             actualizaciones aunque el tablero no este en pantalla. -->
+        <service
+            android:name=".DashService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter android:priority="900">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <!--
+                  QUICKBOOT_POWERON no es de AOSP: lo emiten muchas ROMs
+                  chinas —esta incluida— cuando el aparato sale de su
+                  hibernacion rapida en vez de arrancar de cero. En un head
+                  unit eso es LO NORMAL: el SoC nunca se apaga del todo
+                  porque cuelga del 12 V constante, asi que al girar la llave
+                  a menudo NO hay BOOT_COMPLETED que valga. Sin esta accion
+                  el tablero no aparecia unas veces si y otras no, que es
+                  justo lo que reporto el dueño.
+                -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Tras actualizarse a si misma, el sistema mata el proceso
+                     y hay que volver a levantar el tablero. -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <intent-filter>
+                <!-- La alarma de resurreccion. El dueño tenia que abrir la app
+                     a mano tras cada reinicio: estas ROMs matan servicios y no
+                     siempre respetan BOOT_COMPLETED ni START_STICKY. -->
+                <action android:name="com.nonosky.carsoc.RESUCITAR" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Contesta el PIN del emparejamiento Bluetooth.
+
+          Declarado y con prioridad ALTA a proposito. El receptor que ya
+          existia se registraba en tiempo de ejecucion desde la pantalla, asi
+          que con el tablero en segundo plano no existia — y sin prioridad, la
+          UI del sistema atendia antes la difusion ordenada y sacaba su propio
+          dialogo. De ahi el "PIN incorrecto" en bucle que veia el dueño.
+        -->
+        <receiver
+            android:name=".EmparejadorReceiver"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.bluetooth.device.action.PAIRING_REQUEST" />
+            </intent-filter>
+        </receiver>
+
+        <!-- El receptor de lo que cuenta un APK confirmador NO se declara
+             aqui: lo declara la app del carro que usa uno, con su permiso y
+             su accion. Una app sin confirmador no lo lleva. -->
+
+        <!-- Desenlace de cada sesion de instalacion. -->
+        <receiver
+            android:name=".selfupdate.InstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.nonosky.carsoc.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

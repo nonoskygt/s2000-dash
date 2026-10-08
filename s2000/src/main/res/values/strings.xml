@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">S2000 Dash</string>
+    <string name="needs_bluetooth">Sin permiso de Bluetooth no hay tablero</string>
+</resources>

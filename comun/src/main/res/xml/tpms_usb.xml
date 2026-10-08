@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El receptor TPMS: un CH340/CH341 (VID 0x1A86 = 6790, PID 0x7523 = 29987).
+
+  Declararlo aqui es lo que convierte el permiso USB en PERMANENTE. Sin esto,
+  Android exige un dialogo por cada vez que se enchufa, y el servicio arranca
+  antes de que nadie pueda contestarlo: el puente reportaba
+  `SinPermiso (sin permiso USB para VID=0x1A86 PID=0x7523)` con el receptor
+  enumerado y funcionando.
+
+  Con el filtro puesto, al conectar el aparato Android ofrece abrir esta app y,
+  si se marca "usar por omision", concede el permiso para siempre — incluso
+  tras reiniciar, que es justo lo que hace falta en un carro donde nadie va a
+  contestar dialogos con el motor andando.
+-->
+<resources>
+    <usb-device vendor-id="6790" product-id="29987" />
+</resources>

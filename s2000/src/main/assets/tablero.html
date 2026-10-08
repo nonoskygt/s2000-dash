@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024, height=600, initial-scale=1">
+<title>S2000 · Tablero</title>
+<style>
+/* ============================================================
+   HONDA S2000 — TABLERO
+   1024 x 600 exactos en pantalla completa. Sin hover. Sin modos.
+   Presupuesto vertical:
+     12 pad + 44 cabecera + 10 + 296 fila1 + 10 + 216 fila2 + 12 pad = 600
+   Presupuesto horizontal:
+     fila 1: 12 pad + 670 tacometro + 10 + 320 llantas + 12 pad = 1024
+     fila 2: 12 pad + 500 motor + 10 + 220 bateria + 10 + 260 aceite + 12 pad
+   ============================================================ */
+
+:root{
+  /* noche de autopista */
+  --ink0:#0A0F14;        /* fondo pagina  */
+  --ink1:#0F161D;        /* fondo tarjeta */
+  --ink2:#16212B;        /* rebaje / rail */
+  --ink3:#070B10;        /* hueco muerto  */
+  --line:#1D2830;
+  --line2:#2C3B45;
+  --dot:#25323C;
+  /* tinta */
+  --bone:#E6EDF2;
+  --sand:#9FB2BF;
+  --mute:#7E8E9A;
+  /* acentos */
+  --ocher:#F2B544;       /* ambar — aceite, rotulos, zona de cambio */
+  --moss:#3FD0C9;        /* cian  — litio, vivo                     */
+  --lake:#7FB2FF;        /* azul  — tacometro, VTEC                 */
+  --rust:#FF5A47;        /* rojo  — UNA sola alarma, y la roja      */
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ===================== RESPONSIVE =====================
+   El tablero se DISEÑA en 1024x600 y se ESCALA al viewport real. No es
+   pereza: la maquetacion esta afinada a esa caja —tamaños de cifra,
+   holguras, el reloj de mezcla— y estirarla con unidades relativas la
+   descuadra, que es exactamente como se rompio un tablero anterior al
+   pasarlo de 1280x480 a 1024x600.
+   Escalando entra en CUALQUIER pantalla sin romperse nunca. El precio son
+   bandas si la relacion de aspecto no coincide, y es un precio barato.
+   ==================================================== */
+html,body{
+  width:100%;height:100%;
+  overflow:hidden;                 /* sin scroll de ninguna clase */
+  /* TRANSPARENTE: por aqui asoma el fondo de pantalla del radio.
+     El velo va en .frame, no aqui, para poder graduarlo en un solo sitio. */
+  background:transparent;
+}
+
+#lienzo{
+  position:absolute;left:50%;top:50%;
+  width:1024px;height:600px;
+  transform-origin:50% 50%;
+  transform:translate(-50%,-50%);   /* la escala la pone el JS */
+}
+
+body{
+  /* Sin esto, sostener el dedo sobre una casilla abre la SELECCION DE
+     TEXTO del WebView en vez del calibrador: se ve el resaltado azul y el
+     gesto se pierde. En un tablero no hay nada que seleccionar. */
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;  /* cifras tabulares en todo */
+  color:var(--bone);
+  -webkit-font-smoothing:antialiased;
+  -webkit-text-size-adjust:100%;
+}
+
+/* ---------- rejilla maestra ---------- */
+/* Velo sobre el fondo del radio.
+   Un tablero se lee manejando y de noche, y la transparencia se paga en
+   contraste: sin velo, un fondo claro se come las etiquetas. Con 0.62 el
+   fondo se reconoce entre las tarjetas y el texto sigue por encima de
+   4.5:1. Subir a 0.8 lo hace mas legible; bajar a 0.4, mas bonito y peor. */
+.frame{position:relative;z-index:1;width:1024px;height:600px;padding:12px;
+       overflow:hidden;background:rgba(10,15,20,.90)}
+
+/* ---------- los cuadros ----------
+   Cada cuadro conserva SU tamaño de diseño (data-w x data-h) y se escala
+   entero con transform: asi nada de dentro se descuadra al cambiarle el
+   tamaño. Los coloca acomodar(); #cuadros hace scroll vertical si en una
+   ventana estrecha no caben. */
+#cuadros{position:relative;margin-top:10px;overflow-x:hidden;overflow-y:auto;
+         -webkit-overflow-scrolling:touch}
+#cuadros-alto{position:relative;width:100%}
+
+.card{
+  position:absolute;left:0;top:0;transform-origin:0 0;
+  background:rgba(15,22,29,.94);
+  border:1px solid var(--line);border-radius:3px;
+  padding:0;overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(230,237,242,.045);
+}
+.card.oculto{display:none}
+.card.editando{z-index:30}   /* el que se esta moviendo va encima */
+/* El contenido de cada cuadro conserva su diseño (data-w x data-h) y se
+   escala ENTERO dentro de la caja que el dueño le dio, centrado: estirar un
+   cuadro no deforma la letra ni descuadra lo de dentro. */
+.cuerpo{position:absolute;left:0;top:0;padding:12px 14px;box-sizing:border-box;
+        transform-origin:0 0}
+
+/* ---- EDITAR UN CUADRO: sostener el dedo encima ----
+   Recuadro blanco con ocho puntos, como en cualquier programa de diseño:
+   arrastrar un punto redimensiona, arrastrar dentro mueve. El resto del
+   tablero se oscurece para que quede claro cual se esta tocando. Los puntos
+   se ven de 14 px pero se agarran de 44: es un dedo en un carro. */
+body.editando-cuadros #cuadros{overflow:visible}
+#seleccion{position:absolute;z-index:40;border:2px solid #fff;border-radius:3px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 0 0 2000px rgba(0,0,0,.42);
+  touch-action:none;cursor:move}
+#seleccion .punto{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;touch-action:none}
+#seleccion .punto::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:14px;
+  margin:-7px 0 0 -7px;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.5)}
+#seleccion.arrastrando .punto::after{transform:scale(.8)}
+#seleccion .p-nw{left:0;top:0;cursor:nwse-resize}   #seleccion .p-n{left:50%;top:0;cursor:ns-resize}
+#seleccion .p-ne{left:100%;top:0;cursor:nesw-resize} #seleccion .p-e{left:100%;top:50%;cursor:ew-resize}
+#seleccion .p-se{left:100%;top:100%;cursor:nwse-resize} #seleccion .p-s{left:50%;top:100%;cursor:ns-resize}
+#seleccion .p-sw{left:0;top:100%;cursor:nesw-resize} #seleccion .p-w{left:0;top:50%;cursor:ew-resize}
+#seleccion .medida{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  padding:6px 12px;border-radius:3px;background:rgba(0,0,0,.78);color:#fff;
+  font-size:15px;font-weight:700;letter-spacing:.08em;white-space:nowrap;
+  opacity:0;transition:opacity .15s;pointer-events:none}
+#seleccion.arrastrando .medida{opacity:1}
+/* Los mandos van en un panel FIJO y no dentro del cuadro: dentro, un cuadro
+   angosto o encogido apretaba los botones hasta cortar "Listo". El panel se
+   pone en la mitad de la pantalla que el cuadro deja libre, para no taparlo. */
+/* Centrado con left:0/right:0 y margen automatico, NO con left:50% y
+   translate: con left:50% el panel solo podia ocupar la mitad derecha de la
+   ventana, y en pantalla dividida eso eran 250 px y los botones se partian. */
+.edicion{position:fixed;left:0;right:0;margin:0 auto;z-index:60;
+         width:-webkit-max-content;width:max-content;
+         max-width:calc(100vw - 24px);box-sizing:border-box;
+         display:flex;flex-direction:column;align-items:center;gap:10px;
+         padding:12px 14px;border:1px solid var(--ocher);border-radius:4px;
+         background:rgba(7,11,16,.97);box-shadow:0 6px 24px rgba(0,0,0,.6)}
+.edicion.abajo{bottom:12px}
+/* Arriba, por DEBAJO de la cabecera: en pantalla dividida el radio pinta
+   su propia barra encima de los primeros ~55 px de la ventana. */
+.edicion.arriba{top:64px}
+.edicion .t{font-size:13px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--bone)}
+.edicion .fila{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.edicion .b{min-width:56px;height:44px;padding:0 12px;display:flex;align-items:center;justify-content:center;
+            border:1px solid var(--line2);border-radius:3px;background:rgba(15,22,29,.96);
+            font-size:15px;font-weight:700;letter-spacing:.08em;color:var(--sand);text-transform:uppercase}
+.edicion .b:active{border-color:var(--ocher);color:var(--bone)}
+.edicion .b.peligro{color:var(--rust)}
+.edicion .b.listo{color:var(--moss)}
+
+/* Ventana estrecha (pantalla dividida): la cabecera se queda con lo
+   imprescindible para que la tuerca y la X sigan a la vista. */
+body.estrecho .links, body.estrecho .stat, body.estrecho .vr{display:none}
+
+/* ---- PANTALLA DIVIDIDA: un solo cuadro en vez de los seis ----
+   Se dibuja a 500 px de ancho y `acomodar()` lo escala para que quepa
+   ENTERO en lo que quede de ventana: nada de deslizar con el carro andando. */
+#compacto{display:none;position:relative;margin-top:10px}
+body.estrecho #cuadros{display:none}
+body.estrecho #compacto{display:block}
+.cmp{position:absolute;left:0;top:0;width:500px;transform-origin:0 0;box-sizing:border-box;
+     background:rgba(15,22,29,.94);border:1px solid var(--line);border-radius:3px;
+     padding:12px 14px;box-shadow:inset 0 1px 0 rgba(230,237,242,.045)}
+.cmp .sec{border-top:1px solid var(--line);padding-top:9px;margin-top:9px}
+.cmp .sec:first-child{border-top:0;padding-top:0;margin-top:0}
+.cmp .tit,.cmp .nom{display:flex;align-items:center;font-size:11px;font-weight:700;
+     letter-spacing:.2em;text-transform:uppercase;color:var(--sand);margin-bottom:6px}
+.cmp .nom{color:var(--moss)}
+.cmp .grow{flex:1}
+.cmp .k{font-size:9.5px}
+.cmp .big{font-size:44px;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--bone);white-space:nowrap}
+.cmp .med{font-size:24px;font-weight:700;line-height:1.05;color:var(--bone);white-space:nowrap}
+.cmp i{font-size:11px;font-style:normal;font-weight:600;letter-spacing:.08em;color:var(--sand);margin-left:3px}
+.cmp .fila{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.cmp .chica{margin-top:6px;font-size:19px;font-weight:700;color:var(--bone);white-space:nowrap}
+.cmp .bats{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.cmp .bar{height:6px;margin-top:7px;background:var(--ink2);border-radius:1px;overflow:hidden}
+.cmp .bar b{display:block;height:100%;width:0;background:var(--moss)}
+.cmp .ruedas{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.cmp .rd{position:relative;background:rgba(22,33,43,.5);border:1px solid var(--line);border-radius:2px;padding:6px 8px}
+.cmp .rd .pos{font-size:11px;font-weight:700;letter-spacing:.2em;color:var(--sand);margin-bottom:3px}
+.cmp .rd .psi{font-size:30px;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--bone);white-space:nowrap}
+.cmp .rd .tmp{font-size:20px;font-weight:700;line-height:1.1;margin-top:3px;color:var(--bone);white-space:nowrap}
+.cmp .rd.alarm,.cmp .rd.calor{border-color:var(--rust);background:rgba(255,90,71,.13);box-shadow:inset 3px 0 0 var(--rust)}
+.cmp .rd.alarm .pos,.cmp .rd.alarm .psi,.cmp .rd.alarm .psi i,
+.cmp .rd.calor .pos,.cmp .rd.calor .tmp,.cmp .rd.calor .tmp i{color:var(--rust)}
+.cmp .aviso{font-size:10px;letter-spacing:.16em;color:var(--rust)}
+.cmp .mil{font-size:10px;letter-spacing:.14em;color:var(--sand)}
+.cmp .mil.on{color:var(--rust)}
+.cmp .motor{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.cmp .vals{display:grid;grid-template-columns:repeat(3,1fr);gap:9px 22px;margin-top:10px}
+.cmp .vtecl{margin-top:9px;font-size:15px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--sand)}
+.cmp .vtecl.on{color:var(--ocher)}
+.cmp .fila .vtecl{margin-top:0;padding:5px 12px;border:1px solid var(--line2);border-radius:3px;font-style:italic}
+.cmp .fila .vtecl.on{color:#fff;background:var(--rust);border-color:var(--rust)}
+/* esquina de hoja de mapa */
+.card::after{
+  content:"";position:absolute;right:0;bottom:0;width:14px;height:14px;
+  border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);
+  opacity:.55;
+}
+
+/* ---------- rotulo de region (etiqueta de mapa) ---------- */
+.rl{display:flex;align-items:center;height:15px;padding-bottom:7px;
+    border-bottom:1px solid var(--line);margin-bottom:5px}
+.rl .ico{width:14px;height:14px;flex:0 0 auto;margin-right:6px}
+.rl .ico svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
+             stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round}
+.rl .nm{font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;white-space:nowrap}
+.rl .sub{font-size:8.5px;font-weight:600;letter-spacing:.14em;color:var(--mute);
+         text-transform:uppercase;margin-left:7px;white-space:nowrap}
+.rl .ld{flex:1 1 auto;min-width:6px;height:0;border-top:1px dotted var(--dot);margin:0 8px}
+.rl .mt{font-family:var(--mono);font-size:8px;letter-spacing:.04em;color:var(--mute);white-space:nowrap}
+
+/* La potencia dice de un vistazo si el banco gana o pierde energia.
+   Verde entrando, rojo saliendo. Es el unico sitio del tablero donde el
+   color codifica un signo, y por eso el signo TAMBIEN se escribe: quien
+   no distinga los dos tonos sigue leyendo "+" o "-". */
+.carga{color:#3FD0C9 !important}
+.descarga{color:#FF5A47 !important}
+.i-ocher{color:var(--ocher)} .i-moss{color:var(--moss)}
+.i-lake{color:var(--lake)}   .i-sand{color:var(--sand)}
+
+/* ---------- tipografia de dato ---------- */
+/* flex:0 0 auto o las tres columnas de al lado lo estrujan y el simbolo
+   se va a la linea de abajo. Paso de verdad al agrandar los numeros. */
+.big{font-size:76px;line-height:.78;font-weight:700;letter-spacing:-.025em;color:var(--bone);white-space:nowrap;flex:0 0 auto}
+.big i{font-size:23px;font-style:normal;font-weight:500;letter-spacing:0;color:var(--sand);margin-left:3px}
+.mid{font-size:54px;line-height:.82;font-weight:700;letter-spacing:-.02em;color:var(--bone);white-space:nowrap}
+.mid i{font-size:18px;font-style:normal;font-weight:500;letter-spacing:0;color:var(--sand);margin-left:2px}
+.k{font-size:8.5px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--mute);line-height:1}
+
+/* ============================ CABECERA ============================ */
+.top{
+  height:44px;display:flex;align-items:center;padding:0 12px;
+  background:rgba(15,22,29,.88);border:1px solid var(--line);border-radius:3px;
+}
+.brand{display:flex;align-items:center}
+.brand .mark{width:26px;height:26px;margin-right:9px;color:var(--ocher)}
+.brand .mark svg{display:block;width:26px;height:26px;fill:none;stroke:currentColor;
+                 stroke-width:1.3;stroke-linecap:round}
+.brand .wm{font-size:17px;font-weight:700;letter-spacing:.26em;line-height:1}
+.brand .tag{font-size:7.5px;font-weight:600;letter-spacing:.24em;color:var(--mute);text-transform:uppercase}
+.vr{width:1px;height:24px;background:var(--line);margin:0 14px;flex:0 0 auto}
+
+.odo{display:flex;align-items:baseline}
+.odo .k{margin-right:8px}
+.odo .v{font-size:21px;font-weight:700;letter-spacing:.01em;color:var(--bone)}
+.odo .u{font-size:11px;color:var(--sand);margin-left:4px}
+.odo .n{font-size:8px;letter-spacing:.1em;color:var(--mute);margin-left:9px;text-transform:uppercase}
+
+.grow{flex:1 1 auto}
+
+.links{display:flex;align-items:center}
+.links .k{margin-right:8px}
+.pip{width:6px;height:6px;border-radius:50%;background:var(--moss);margin-right:5px;flex:0 0 auto}
+.pip.hollow{background:transparent;box-shadow:inset 0 0 0 1.5px var(--mute)}
+.pip.last{margin-right:0}
+
+.stat{display:flex;align-items:center;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--sand);white-space:nowrap}
+.stat .gl{width:13px;height:13px;margin-right:6px;color:var(--moss)}
+.stat .gl svg{display:block;width:13px;height:13px;fill:none;stroke:currentColor;
+              stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.stat .num{color:var(--bone);font-weight:700}
+
+/* La tuerca (ajustes) y la X (cerrar), al final de la cabecera. 40x34: lo que
+   se acierta con el dedo sin salirse de los 44 px de alto de la franja. */
+.hbtn{width:40px;height:34px;display:flex;align-items:center;justify-content:center;
+     border:1px solid var(--line);border-radius:3px;margin-left:8px;color:var(--sand);
+     flex:0 0 auto;cursor:pointer}
+.hbtn:first-of-type{margin-left:0}
+.hbtn svg{display:block;width:18px;height:18px;fill:none;stroke:currentColor;
+         stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.hbtn:active{border-color:var(--ocher);color:var(--bone)}
+/* El de ESCANEAR CODIGO lleva su palabra: un icono de lupa o de llave no dice
+   "codigos de averia" de reojo. */
+.hbtn.txt{width:auto;padding:0 12px;font-size:11px;font-weight:700;letter-spacing:.14em;
+          text-transform:uppercase;white-space:nowrap}
+
+/* ============================ BARRAS ============================ */
+/* barra de nivel con marcas cada 10% */
+.meter{position:relative;height:16px;background:var(--ink3);
+       border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:11px}
+.meter .fill{position:absolute;top:0;left:0;bottom:0;
+             background:linear-gradient(180deg,#3FD0C9 0%,#1F8C88 100%)}
+.meter .fill.warm{background:linear-gradient(180deg,#F2B544 0%,#B07D1F 100%)}
+.meter .tk{position:absolute;top:0;left:0;right:0;bottom:0;
+  background-image:repeating-linear-gradient(90deg,rgba(10,15,20,.55) 0 1px,transparent 1px 10%)}
+
+/* El boton de averias. Discreto: se usa con el carro parado, y en marcha
+   no debe competir con ningun numero. 44 px de alto igual que los demas. */
+.diagbtn{margin-left:10px;padding:0 12px;height:26px;line-height:24px;
+         border:1px solid var(--line2);border-radius:3px;
+         font-size:9.5px;font-weight:700;letter-spacing:.16em;
+         text-transform:uppercase;color:var(--sand);white-space:nowrap;
+         -webkit-user-select:none;user-select:none}
+.diagbtn:active{background:rgba(242,181,68,.2);border-color:var(--ocher);
+                color:var(--bone)}
+
+/* ============================ TACOMETRO ============================
+   El corazon de este tablero. La escala, la marca del VTEC, la zona de cambio
+   y la roja salen del perfil del motor (d.rpmMax, d.rpmVtec, d.rpmCambio,
+   d.rpmRoja): ni un numero del motor escrito aqui.
+   El VTEC SI es un acontecimiento: engancha alto y con carga, y cuando entra
+   se enciende el cuadro entero. */
+.tach{display:flex;align-items:flex-end;justify-content:space-between;height:112px;margin-top:4px}
+.tnum{font-size:118px;line-height:.8;font-weight:800;letter-spacing:-.04em;color:var(--bone);white-space:nowrap}
+.tnum i{font-size:20px;font-style:normal;font-weight:600;letter-spacing:.2em;color:var(--sand);margin-left:10px}
+.tnum.cambio{color:var(--ocher)}
+.tnum.roja{color:var(--rust)}
+.tvtec{font-size:40px;font-weight:900;font-style:italic;letter-spacing:.12em;line-height:1;
+       color:var(--line2);border:2px solid var(--line2);border-radius:4px;padding:8px 18px 8px 14px}
+.card.vtec-on{border-color:var(--rust);box-shadow:inset 0 0 0 1px var(--rust),0 0 22px rgba(255,90,71,.28)}
+.card.vtec-on .tvtec{color:#fff;background:var(--rust);border-color:var(--rust)}
+.trail{position:relative;height:30px;margin-top:16px;background:var(--ink3);
+       border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.trail .tz{position:absolute;top:0;bottom:0;display:none}
+.trail .tz.cambio{background:repeating-linear-gradient(135deg,rgba(242,181,68,.26) 0 2px,transparent 2px 7px)}
+.trail .tz.roja{background:repeating-linear-gradient(135deg,rgba(255,90,71,.42) 0 2px,transparent 2px 7px)}
+.trail .tfill{position:absolute;top:0;bottom:0;left:0;width:0;
+              background:linear-gradient(90deg,#1F6F8C 0%,#7FB2FF 100%);
+              transition:width .45s cubic-bezier(.2,.8,.3,1)}  /* se desliza, no salta */
+.trail .tfill.cambio{background:linear-gradient(90deg,#1F6F8C 0%,#7FB2FF 55%,#F2B544 100%)}
+.trail .tfill.roja{background:linear-gradient(90deg,#1F6F8C 0%,#F2B544 65%,#FF5A47 100%)}
+.trail .tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(7,11,16,.75)}
+.trail .tmv{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:var(--bone);display:none}
+.tesc{position:relative;height:14px;margin-top:5px}
+.tesc span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;font-weight:700;
+           letter-spacing:.06em;color:var(--mute)}
+.tpie{display:grid;grid-template-columns:1fr 1fr 1fr;grid-gap:10px;gap:10px;margin-top:14px}
+.tpie .v{font-size:30px;font-weight:700;line-height:1;margin-top:5px;color:var(--bone);white-space:nowrap}
+.tpie .v i{font-size:12px;font-style:normal;font-weight:600;color:var(--sand);margin-left:3px}
+
+/* ============================ LLANTAS ============================ */
+.chip-al{display:flex;align-items:center;font-size:8px;font-weight:700;letter-spacing:.16em;
+  color:var(--rust);text-transform:uppercase;white-space:nowrap}
+.chip-al .d{width:6px;height:6px;border-radius:50%;background:var(--rust);margin-right:5px}
+
+.tg{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:116px 116px;
+    grid-gap:8px;gap:8px;height:240px}
+/* Dos columnas: los numeros apilados a la izquierda, y el rotulo con el
+   dibujo a la derecha ocupando el alto entero. Al agrandar el dibujo, la
+   pila vertical de antes se salia de la casilla. */
+.tc{position:relative;background:rgba(22,33,43,.5);border:1px solid var(--line);
+    border-radius:2px;padding:7px 10px;
+    display:grid;grid-template-columns:1fr auto;grid-template-rows:1fr 1fr;
+    column-gap:8px;align-items:center}
+/* El rotulo de rueda va a la DERECHA y encima del dibujo, y el dibujo
+   crece: a medio metro, el de 16x25 no se veia. */
+.tc .hd{grid-column:2;grid-row:1 / 3;display:flex;align-items:center;justify-content:center}
+.tc .marca{display:flex;flex-direction:column;align-items:center}
+.tc .pos{font-size:15px;font-weight:700;letter-spacing:.2em;color:var(--sand);margin-bottom:3px}
+.tc .psi{grid-column:1;grid-row:1;font-size:42px;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--bone);margin:0}
+.tc .psi i{font-size:11px;font-style:normal;font-weight:600;letter-spacing:.1em;color:var(--sand);margin-left:4px}
+/* Temperatura al mismo tamano que la presion, por peticion del dueño: una
+   llanta caliente dice tanto como una baja. */
+.tc .tmp{grid-column:1;grid-row:2;font-size:42px;font-weight:700;line-height:1;
+         letter-spacing:-.02em;color:var(--bone);margin:0}
+.tc .tmp i{font-size:11px;font-style:normal;font-weight:600;letter-spacing:.1em;
+           color:var(--sand);margin-left:4px}
+.tc .km{width:30px;height:47px;flex:0 0 auto;color:var(--sand)}
+.tc .km svg{display:block;width:30px;height:47px}
+
+.tc.alarm{border-color:var(--rust);background:rgba(255,90,71,.13);
+          box-shadow:inset 3px 0 0 var(--rust)}
+.tc.alarm .pos,.tc.alarm .psi{color:var(--rust)}
+.tc.alarm .psi i{color:var(--rust)}
+.tc.alarm .km{color:var(--rust)}
+.tc.alarm .tmp{color:var(--sand)}
+/* Llanta CALIENTE: grita la temperatura y no la presion. Si las dos se
+   pintaran de oxido no se sabria cual de las dos manda. */
+.tc.calor{border-color:var(--rust);background:rgba(255,90,71,.13);
+          box-shadow:inset 3px 0 0 var(--rust)}
+.tc.calor .pos,.tc.calor .tmp,.tc.calor .tmp i,.tc.calor .km{color:var(--rust)}
+/* Anclado a la esquina de la casilla: metido en el flujo del numero se
+   salia por debajo del borde al reorganizar la rejilla. */
+.tc .flag{position:absolute;right:8px;bottom:6px;display:inline-flex;
+  align-items:center;font-size:9px;font-weight:700;
+  letter-spacing:.14em;color:var(--rust);text-transform:uppercase}
+.tc .flag svg{width:11px;height:11px;margin-right:4px;fill:none;stroke:currentColor;
+  stroke-width:1.4;stroke-linejoin:round}
+
+/* ============================ MOTOR ============================ */
+.eg{display:grid;grid-template-columns:1fr 1fr;grid-gap:0 10px;gap:0 10px}
+.er{height:40px;display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid rgba(44,59,69,.4)}
+.er.lastrow{border-bottom:0}
+.er .k{white-space:nowrap}
+.er .ev{font-size:26px;font-weight:600;line-height:1;color:var(--bone);white-space:nowrap}
+.er .ev i{font-size:11px;font-style:normal;font-weight:500;color:var(--sand);margin-left:3px}
+
+/* dato rancio: > 3 s sin refresco. Apagado, con "--", nunca 0. */
+.er.stale{background:rgba(0,0,0,.34);border-left:2px dotted var(--line2);
+          padding:0 8px 0 7px;border-bottom-color:transparent}
+.er.stale .k{color:var(--mute);opacity:.85}
+.er.stale .ev{font-size:22px;font-weight:700;color:var(--mute);letter-spacing:.1em}
+.er.stale .oldchip{font-size:7px;font-weight:700;letter-spacing:.1em;color:var(--mute);
+  text-transform:uppercase;white-space:nowrap;border:1px dotted var(--line2);border-radius:2px;
+  padding:2px 4px;margin:0 5px}
+
+/* ---------- el cuadro del motor: agua, aire, ajustes y la luz de averia ---------- */
+.trio.m3 .v{font-size:48px}
+.milrow{display:flex;align-items:center;height:46px;margin-top:22px;padding:0 12px;
+        background:rgba(0,0,0,.24);border:1px solid var(--line);border-radius:2px;
+        font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sand)}
+.milrow .lamp{width:10px;height:10px;border-radius:50%;background:var(--line2);margin-right:10px;flex:0 0 auto}
+.milrow .cod{margin-left:auto;color:var(--mute);white-space:nowrap}
+.milrow.on{border-color:var(--rust);color:var(--rust)}
+.milrow.on .lamp{background:var(--rust)}
+
+/* ============================ BATERIA ============================ */
+.cap{font-size:8.5px;font-weight:600;letter-spacing:.18em;color:var(--sand);
+     text-transform:uppercase;height:15px;line-height:15px}
+.duo{grid-template-columns:1fr 1fr !important}
+.trio{display:grid;grid-template-columns:1fr 1fr 1fr;grid-gap:8px;gap:8px;margin-top:12px}
+.trio .v{font-size:36px;font-weight:700;color:var(--bone);margin-top:5px;
+         line-height:1;white-space:nowrap;letter-spacing:-.02em}
+.trio .v i{font-size:13px;font-style:normal;font-weight:600;color:var(--sand);margin-left:2px}
+
+/* ============================ ACEITE ============================ */
+.oilfoot{margin-top:20px}
+.oilnext{display:flex;align-items:baseline;justify-content:space-between}
+.oilnext .v{font-size:20px;font-weight:600;color:var(--bone);white-space:nowrap}
+.oilnext .v i{font-size:10px;font-style:normal;font-weight:500;color:var(--sand);margin-left:3px}
+.note{font-size:8px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase;
+      margin-top:9px;line-height:1.5}
+.hatch{position:absolute;top:0;bottom:0;right:0;
+  background-image:repeating-linear-gradient(135deg,rgba(159,178,191,.16) 0 1px,transparent 1px 6px)}
+
+/* ============ CALIBRACION DE LLANTAS ============
+   Los sensores TPMS baratos se desvian por una constante. Se corrige
+   sosteniendo el dedo sobre la rueda: sostenido y no un toque, porque un
+   toque suelto a media curva no puede cambiar una calibracion.
+   ================================================ */
+#cal{position:fixed;top:0;left:0;right:0;bottom:0;z-index:60;display:none;
+     align-items:center;justify-content:center;background:rgba(11,15,12,.86)}
+#cal.abierto{display:flex}
+.calcaja{width:430px;background:var(--ink1);border:1px solid var(--line2);
+         border-radius:4px;padding:18px 20px}
+.caltit{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--sand);
+        text-transform:uppercase}
+.calsub{font-size:10.5px;color:var(--mute);margin-top:5px;line-height:1.5}
+.calfila{display:flex;align-items:center;gap:10px;margin-top:16px}
+.calval{flex:1 1 auto;text-align:center;font-size:38px;font-weight:700;
+        color:var(--bone);line-height:1}
+.calval i{font-size:13px;font-style:normal;font-weight:600;color:var(--sand);
+          margin-left:4px}
+.calbtn{flex:0 0 68px;height:56px;display:flex;align-items:center;
+        justify-content:center;background:rgba(0,0,0,.3);
+        border:1px solid var(--line2);border-radius:3px;font-size:28px;
+        font-weight:700;color:var(--sand);-webkit-user-select:none;user-select:none}
+.calbtn:active{background:rgba(63,208,201,.22);border-color:var(--moss);color:var(--bone)}
+.calpie{display:flex;align-items:center;gap:9px;margin-top:16px;
+        min-height:44px;-webkit-user-select:none;user-select:none}
+.calmarca{width:22px;height:22px;flex:0 0 auto;border:1.6px solid var(--line2);
+          border-radius:3px;position:relative}
+.calmarca.si{border-color:var(--moss)}
+.calmarca.si::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:12px;
+  border:solid var(--moss);border-width:0 2.4px 2.4px 0;transform:rotate(42deg)}
+.calpie span{font-size:12px;color:var(--sand)}
+.calcerrar{display:flex;gap:8px;margin-top:14px}
+.calcerrar div{flex:1 1 auto;height:46px;display:flex;align-items:center;
+  justify-content:center;background:rgba(0,0,0,.3);border:1px solid var(--line2);
+  border-radius:3px;font-size:12px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--sand);-webkit-user-select:none;user-select:none}
+.calcerrar div:active{background:rgba(242,181,68,.2);border-color:var(--ocher)}
+
+</style>
+</head>
+<body>
+
+<!-- ============ CALIBRACION DE LLANTAS ============ -->
+<div id="cal">
+  <div class="calcaja">
+    <div class="caltit" id="cal-tit">Calibrar DI</div>
+    <div class="calsub">
+      Corrige lo que reporta el sensor. Estos sensores se desvían por una
+      constante: infla con un manómetro bueno y ajusta hasta que cuadre.
+    </div>
+    <div class="calfila">
+      <div class="calbtn" id="cal-menos">&minus;</div>
+      <div class="calval"><span id="cal-val">+0.0</span><i>PSI</i></div>
+      <div class="calbtn" id="cal-mas">+</div>
+    </div>
+    <div class="calpie" id="cal-todas">
+      <span class="calmarca si" id="cal-marca"></span>
+      <span>Aplicar la misma corrección a las cuatro llantas</span>
+    </div>
+    <div class="calcerrar">
+      <div id="cal-cero">A cero</div>
+      <div id="cal-listo">Listo</div>
+    </div>
+  </div>
+</div>
+
+<div id="lienzo">
+<div class="frame">
+
+  <!-- =================== CABECERA · 44 px =================== -->
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 26 26">
+        <path d="M3.2 19.5a10 10 0 1 1 19.6 0"/>
+        <path d="M13 17.6l5.6-6.4"/>
+        <path d="M19.4 6.4l1.6-1.6"/>
+      </svg></span>
+      <span>
+        <div class="wm">S2000</div>
+      </span>
+    </div>
+
+    <span class="grow"></span>
+
+    <div class="links">
+      <span class="k">Enlaces</span>
+      <span class="pip hollow" id="pip-arr" title="Batería"></span>
+      <span class="pip hollow" id="pip-tpms" title="TPMS CH340"></span>
+      <span class="pip hollow last" id="pip-obd" title="OBD K-line"></span>
+    </div>
+
+    <span class="vr"></span>
+
+    <div class="stat">
+      <span class="gl" aria-hidden="true"><svg viewBox="0 0 13 13">
+        <path d="M1.8 6.9l3 3L11.2 3.2"/>
+      </svg></span>
+      <span id="hd-mil">Sin avería</span>&nbsp;·&nbsp;<span class="num" id="hd-cod">0</span>&nbsp;códigos
+    </div>
+
+    <span class="vr"></span>
+
+    <div class="stat" style="color:var(--mute)">
+      Radio <span class="num" id="radio-t">&nbsp;68&nbsp;</span>°C
+    </div>
+
+    <span class="vr"></span>
+
+    <div class="hbtn txt" id="btn-codigos" role="button" tabindex="0" title="Escanear código">Escanear código</div>
+    <div class="hbtn" id="btn-tuerca" role="button" tabindex="0" title="Ajustes" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+    <div class="hbtn" id="btn-cerrar" role="button" tabindex="0" title="Cerrar" aria-label="Cerrar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+  </header>
+
+
+  <!-- =================== LOS CUADROS ===================
+       Ya no van en dos filas fijas: los coloca `acomodar()` segun el ancho
+       de la ventana, cuales estan ocultos y el tamaño que el dueño le dio a
+       cada uno (sostener el dedo sobre un cuadro). En pantalla completa salen
+       exactamente como antes; en pantalla dividida se reacomodan. -->
+  <div id="cuadros"><div id="cuadros-alto">
+
+    <!-- ---------- TACOMETRO ---------- -->
+    <section class="card" id="c-tach" data-cuadro="tacometro" data-nombre="Tacómetro" data-w="670" data-h="296">
+      <div class="rl">
+        <span class="ico i-lake" aria-hidden="true"><svg viewBox="0 0 16 16">
+          <path d="M2.2 11.5a6 6 0 1 1 11.6 0"/>
+          <path d="M8 10l3.2-3.6"/>
+          <circle cx="8" cy="10" r="1.1"/>
+        </svg></span>
+        <span class="nm i-lake">Tacómetro</span>
+        <span class="sub">F20C</span>
+        <span class="ld"></span>
+        <span class="mt" id="t-lim">&ndash;&ndash;</span>
+      </div>
+
+      <div class="tach">
+        <div class="tnum" id="t-num"><span id="t-rpm">&ndash;&ndash;</span><i>RPM</i></div>
+        <div class="tvtec">VTEC</div>
+      </div>
+
+      <div class="trail" id="t-rail">
+        <div class="tz cambio" id="t-zc"></div>
+        <div class="tz roja" id="t-zr"></div>
+        <div class="tfill" id="t-fill"></div>
+        <div class="tmv" id="t-mv"></div>
+      </div>
+      <div class="tesc" id="t-escala"></div>
+
+      <div class="tpie">
+        <div><div class="k">Carga</div><div class="v"><span id="t-carga">&ndash;&ndash;</span><i>%</i></div></div>
+        <div><div class="k">Colector</div><div class="v"><span id="t-map">&ndash;&ndash;</span><i>PSI</i></div></div>
+        <div><div class="k">Avance</div><div class="v"><span id="t-avance">&ndash;&ndash;</span><i>°</i></div></div>
+      </div>
+    </section>
+
+    <!-- ---------- LLANTAS ---------- -->
+    <section class="card" data-cuadro="llantas" data-nombre="Llantas" data-w="320" data-h="296">
+      <div class="rl">
+        <span class="ico i-sand" aria-hidden="true"><svg viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.3"/>
+          <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2"/>
+        </svg></span>
+        <span class="nm i-sand">Llantas</span>
+        <span class="sub">TPMS · CH340</span>
+        <span class="ld"></span>
+        <span class="chip-al" id="ll-aviso" style="display:none"><span class="d"></span><span id="ll-aviso-txt">TD baja</span></span>
+      </div>
+
+      <div class="tg">
+        <!-- delantera izquierda -->
+        <div class="tc" id="ll0">
+          <div class="hd">
+            <span class="marca"><span class="pos">DI</span>
+            <span class="km"><svg viewBox="0 0 18 28">
+              <rect x="3.4" y="1.4" width="11.2" height="25.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+              <path d="M5.6 8.6h6.8M5.6 19.4h6.8" stroke="currentColor" stroke-width="1" opacity=".3"/>
+              <rect x="0.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity="1"/>
+              <rect x="14.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="0.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="14.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+            </svg></span></span>
+          </div>
+          <div class="psi"><span id="ll0-psi">32</span><i>PSI</i></div>
+          <div class="tmp"><span id="ll0-t">28</span><i>°C</i></div>
+        </div>
+
+        <!-- delantera derecha -->
+        <div class="tc" id="ll1">
+          <div class="hd">
+            <span class="marca"><span class="pos">DD</span>
+            <span class="km"><svg viewBox="0 0 18 28">
+              <rect x="3.4" y="1.4" width="11.2" height="25.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+              <path d="M5.6 8.6h6.8M5.6 19.4h6.8" stroke="currentColor" stroke-width="1" opacity=".3"/>
+              <rect x="0.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="14.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity="1"/>
+              <rect x="0.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="14.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+            </svg></span></span>
+          </div>
+          <div class="psi"><span id="ll1-psi">31</span><i>PSI</i></div>
+          <div class="tmp"><span id="ll1-t">29</span><i>°C</i></div>
+        </div>
+
+        <!-- trasera izquierda -->
+        <div class="tc" id="ll2">
+          <div class="hd">
+            <span class="marca"><span class="pos">TI</span>
+            <span class="km"><svg viewBox="0 0 18 28">
+              <rect x="3.4" y="1.4" width="11.2" height="25.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+              <path d="M5.6 8.6h6.8M5.6 19.4h6.8" stroke="currentColor" stroke-width="1" opacity=".3"/>
+              <rect x="0.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="14.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+              <rect x="0.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity="1"/>
+              <rect x="14.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".2"/>
+            </svg></span></span>
+          </div>
+          <div class="psi"><span id="ll2-psi">30</span><i>PSI</i></div>
+          <div class="tmp"><span id="ll2-t">27</span><i>°C</i></div>
+        </div>
+
+        <!-- trasera derecha — LA UNICA QUE GRITA -->
+        <div class="tc alarm" id="ll3">
+          <div class="hd">
+            <span class="marca"><span class="pos">TD</span>
+            <span class="km"><svg viewBox="0 0 18 28">
+              <rect x="3.4" y="1.4" width="11.2" height="25.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+              <path d="M5.6 8.6h6.8M5.6 19.4h6.8" stroke="currentColor" stroke-width="1" opacity=".35"/>
+              <rect x="0.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".25"/>
+              <rect x="14.5" y="4.6" width="3" height="5.2" rx="1" fill="currentColor" opacity=".25"/>
+              <rect x="0.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity=".25"/>
+              <rect x="14.5" y="18.2" width="3" height="5.2" rx="1" fill="currentColor" opacity="1"/>
+            </svg></span></span>
+          </div>
+          <div class="psi"><span id="ll3-psi">24</span><i>PSI</i></div>
+          <div class="tmp"><span id="ll3-t">31</span><i>°C</i>
+            <span class="flag" id="ll3-flag" style="display:none"><svg viewBox="0 0 16 16">
+              <path d="M8 2.4 15 13.6H1z"/><path d="M8 6.6v3.4"/>
+              <circle cx="8" cy="11.9" r=".75" fill="currentColor" stroke="none"/>
+            </svg><span class="flag-txt">Baja</span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ---------- MOTOR ---------- -->
+    <section class="card" data-cuadro="motor" data-nombre="Motor" data-w="500" data-h="216">
+      <div class="rl">
+        <span class="ico i-sand" aria-hidden="true"><svg viewBox="0 0 16 16">
+          <rect x="2.5" y="5" width="9" height="6.5" rx="1"/>
+          <path d="M11.5 7h2v3h-2M5 5V3.5h4V5M2.5 8.2H1"/>
+        </svg></span>
+        <span class="nm i-sand">Motor</span>
+        <span class="ld"></span>
+        <span class="mt">ISO 9141-2</span>
+        <span class="diagbtn" id="btn-diag">Averías</span>
+        <span class="diagbtn" id="btn-config">Ajustes</span>
+      </div>
+
+      <div class="trio m3">
+        <div><div class="k">Agua</div><div class="v"><span id="m-agua">&ndash;&ndash;</span><i>°C</i></div></div>
+        <div><div class="k">Aire</div><div class="v"><span id="m-aire">&ndash;&ndash;</span><i>°C</i></div></div>
+        <div><div class="k">Ajustes</div><div class="v"><span id="m-trim">&ndash;&ndash;</span><i>%</i></div></div>
+      </div>
+
+      <div class="milrow" id="m-milrow">
+        <span class="lamp"></span>
+        <span id="m-mil">&ndash;&ndash;</span>
+        <span class="cod"><span id="m-cod">&ndash;&ndash;</span> códigos</span>
+      </div>
+    </section>
+
+    <!-- ---------- BATERIA ---------- -->
+    <section class="card" data-cuadro="bateria" data-nombre="Batería" data-w="220" data-h="216">
+      <div class="rl">
+        <span class="ico i-moss" aria-hidden="true"><svg viewBox="0 0 16 16">
+          <rect x="1.4" y="4.4" width="11.2" height="7.6" rx="1.3"/>
+          <path d="M14.2 6.9v2.4"/>
+          <path d="M3.9 6.5v3.4M6.3 6.5v3.4M8.7 6.5v3.4"/>
+        </svg></span>
+        <span class="nm i-moss">Batería</span>
+        <span class="ld"></span>
+        <span class="mt" id="arr-mac">&ndash;&ndash;</span>
+      </div>
+
+      <div class="cap" id="arr-nom">&ndash;&ndash;</div>
+
+      <div style="display:flex;align-items:center;height:64px">
+        <div class="mid"><span id="arr-soc">&ndash;&ndash;</span><i>%</i></div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="k">Tensión</div>
+          <div class="v" style="font-size:36px;font-weight:700;line-height:1;margin-top:5px;letter-spacing:-.02em"><span id="arr-v">&ndash;&ndash;</span><i style="font-size:11px;font-style:normal;font-weight:500;color:var(--sand);margin-left:3px">V</i></div>
+        </div>
+      </div>
+
+      <div class="meter" style="margin-top:8px"><div class="fill" id="arr-bar" style="width:0"></div><div class="tk"></div></div>
+
+      <div class="trio duo">
+        <div><div class="k">Potencia</div><div class="v"><span id="arr-w">&ndash;&ndash;</span><i>W</i></div></div>
+        <div><div class="k">Celdas</div><div class="v"><span id="arr-t">&ndash;&ndash;</span><i>°C</i></div></div>
+      </div>
+    </section>
+
+    <!-- ---------- ACEITE ---------- -->
+    <section class="card" data-cuadro="aceite" data-nombre="Aceite" data-w="260" data-h="216">
+      <div class="rl">
+        <span class="ico i-ocher" aria-hidden="true"><svg viewBox="0 0 16 16">
+          <path d="M8 2.1c2.6 3 4.4 5 4.4 7A4.4 4.4 0 0 1 8 13.5 4.4 4.4 0 0 1 3.6 9.1c0-2 1.8-4 4.4-7z"/>
+        </svg></span>
+        <span class="nm i-ocher">Aceite</span>
+        <span class="ld"></span>
+        <span class="mt">GPS + HORAS</span>
+      </div>
+
+      <div style="display:flex;align-items:center;height:64px">
+        <div class="mid"><span id="ace-pct">62</span><i>%</i></div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="k">Faltan</div>
+          <div style="font-size:26px;font-weight:600;line-height:1;margin-top:5px;color:var(--bone)"><span id="ace-km">2&#8239;270</span><i style="font-size:11px;font-style:normal;font-weight:500;color:var(--sand);margin-left:3px">km</i></div>
+        </div>
+      </div>
+
+      <div class="meter" style="margin-top:8px">
+        <div class="fill warm" id="ace-bar" style="width:0"></div>
+        <div class="hatch" id="ace-hatch" style="display:none"></div>
+        <div class="tk"></div>
+      </div>
+
+      <div class="oilfoot">
+        <div class="oilnext">
+          <span class="k">Por horas</span>
+          <span class="v"><span id="ace-h">124</span><i>h</i></span>
+        </div>
+        <div class="note">Manda el que antes se agote</div>
+      </div>
+    </section>
+  </div></div>
+
+  <!-- =================== PANTALLA DIVIDIDA: UN SOLO CUADRO ===================
+       En media pantalla no van los cuadros sino esto: las revoluciones, la
+       bateria, las cuatro llantas y el motor, todo a la vista y sin deslizar.
+       Lo escala `acomodar()` para que quepa entero. -->
+  <div id="compacto"><section class="cmp" id="cmp">
+
+    <div class="sec">
+      <div class="bats">
+        <div class="bat">
+          <div class="nom">Revoluciones</div>
+          <div class="fila">
+            <div class="big"><span id="cmp-rpm">––</span></div>
+            <div class="vtecl"><span id="cmp-vtec">VTEC</span></div>
+          </div>
+          <div class="bar"><b id="cmp-rpm-bar"></b></div>
+        </div>
+        <div class="bat">
+          <div class="nom">Batería</div>
+          <div class="fila">
+            <div class="big"><span id="cmp-arr-soc">––</span><i>%</i></div>
+            <div class="med"><span id="cmp-arr-v">––</span><i>V</i></div>
+          </div>
+          <div class="bar"><b id="cmp-arr-bar"></b></div>
+          <div class="fila chica">
+            <span><span id="cmp-arr-w">––</span><i>W</i></span>
+            <span><span id="cmp-arr-t">––</span><i>°C</i></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="tit">Llantas<span class="grow"></span><span class="aviso" id="cmp-ll-aviso" style="display:none"></span></div>
+      <div class="ruedas">
+        <div class="rd" id="cmp-ll0"><div class="pos">DI</div><div class="psi"><span id="cmp-ll0-psi">––</span><i>PSI</i></div><div class="tmp"><span id="cmp-ll0-t">––</span><i>°C</i></div></div>
+        <div class="rd" id="cmp-ll1"><div class="pos">DD</div><div class="psi"><span id="cmp-ll1-psi">––</span><i>PSI</i></div><div class="tmp"><span id="cmp-ll1-t">––</span><i>°C</i></div></div>
+        <div class="rd" id="cmp-ll2"><div class="pos">TI</div><div class="psi"><span id="cmp-ll2-psi">––</span><i>PSI</i></div><div class="tmp"><span id="cmp-ll2-t">––</span><i>°C</i></div></div>
+        <div class="rd" id="cmp-ll3"><div class="pos">TD</div><div class="psi"><span id="cmp-ll3-psi">––</span><i>PSI</i></div><div class="tmp"><span id="cmp-ll3-t">––</span><i>°C</i></div></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="tit">Motor<span class="grow"></span><span class="mil" id="cmp-mil">––</span></div>
+      <div class="vals">
+        <div><div class="k">Agua</div><div class="med"><span id="cmp-agua">––</span><i>°C</i></div></div>
+        <div><div class="k">Aire</div><div class="med"><span id="cmp-aire">––</span><i>°C</i></div></div>
+        <div><div class="k">Carga</div><div class="med"><span id="cmp-carga">––</span><i>%</i></div></div>
+        <div><div class="k">Colector</div><div class="med"><span id="cmp-map">––</span><i>PSI</i></div></div>
+        <div><div class="k">Avance</div><div class="med"><span id="cmp-avance">––</span><i>°</i></div></div>
+        <div><div class="k">Ajustes</div><div class="med"><span id="cmp-trim">––</span><i>%</i></div></div>
+      </div>
+    </div>
+
+  </section></div>
+
+</div>
+
+<script>
+/* ===================== ACOMODAR Y EDITAR LOS CUADROS =====================
+   PANTALLA COMPLETA. Cada cuadro tiene su rectangulo en el tablero —x, y,
+   ancho y alto, en pixeles de diseño del lienzo de 1024x600—. De fabrica
+   salen en dos filas, exactamente el tablero de siempre (396+264+320 y
+   500+220+260). El dueño los mueve y los redimensiona a mano, uno a uno, y
+   solo cambia el que toca: los demas se quedan donde estaban.
+
+   Dentro, cada cuadro conserva su diseño y se escala ENTERO para caber en su
+   rectangulo, centrado. Asi un cuadro mas ancho no estira la letra.
+
+   PANTALLA DIVIDIDA. El cuadro unico (#compacto), sin edicion.
+
+   Lo que el dueño cambia se guarda en el radio por el Puente, no en el
+   WebView: el almacenamiento del WebView esta apagado a proposito. */
+(function(){
+  var L = document.getElementById("lienzo");
+  var F = document.querySelector(".frame");
+  var R = document.getElementById("relieve");
+  var C = document.getElementById("cuadros");
+  var A = document.getElementById("cuadros-alto");
+  var H = document.querySelector("header.top");
+  var K = document.getElementById("compacto"), KI = document.getElementById("cmp");
+  if(!L || !F || !C || !A) return;
+
+  var AIRE = 10, PAD = 12, ALTO = 600, ANCHO = 1024;
+  var ESTRECHO = 820;   // por debajo, la cabecera se simplifica y va el cuadro unico
+  var MIN_W = 120, MIN_H = 80, IMAN = 8;
+
+  var cuadros = Array.prototype.slice.call(document.querySelectorAll(".card[data-cuadro]"));
+  var porId = {};
+  cuadros.forEach(function(c){ porId[c.getAttribute("data-cuadro")] = c; });
+  var ORDEN = cuadros.map(function(c){ return c.getAttribute("data-cuadro"); });
+
+  // El contenido de cada cuadro va en un cuerpo que se escala; la caja de
+  // fuera (fondo y borde) toma el tamaño que el dueño le dio.
+  cuadros.forEach(function(c){
+    var b = document.createElement("div");
+    b.className = "cuerpo";
+    while(c.firstChild) b.appendChild(c.firstChild);
+    c.appendChild(b);
+  });
+
+  function dw(c){ return +c.getAttribute("data-w"); }
+  function dh(c){ return +c.getAttribute("data-h"); }
+
+  var cfg;
+  function cargar(){
+    cfg = {rects: {}, ocultos: []};
+    try{
+      var g = (window.Puente && Puente.leerCuadros) ? Puente.leerCuadros() : "";
+      if(g){
+        var o = JSON.parse(g);
+        if(o && o.ocultos) cfg.ocultos = o.ocultos.filter(function(i){ return porId[i]; });
+        if(o && o.rects) Object.keys(o.rects).forEach(function(id){
+          var r = o.rects[id];
+          var bueno = porId[id] && r && r.length === 4 &&
+            r.every(function(n){ return typeof n === "number" && isFinite(n); });
+          if(bueno) cfg.rects[id] = r.slice();
+        });
+      }
+    }catch(e){}
+  }
+  cargar();
+
+  function guardar(){
+    try{ if(window.Puente && Puente.guardarCuadros) Puente.guardarCuadros(JSON.stringify(cfg)); }catch(e){}
+  }
+  function oculto(id){ return cfg.ocultos.indexOf(id) >= 0; }
+
+  var W = ANCHO - 2 * PAD, k = 1, defecto = {};
+
+  // Las filas de fabrica, para los cuadros que el dueño no ha tocado.
+  function filasDeFabrica(disponible){
+    var filas = [], fila = [], ancho = 0;
+    ORDEN.forEach(function(id){
+      if(oculto(id)) return;
+      var c = porId[id], w = dw(c), h = dh(c);
+      var necesita = fila.length ? ancho + AIRE + w : w;
+      if(fila.length && necesita > W){ filas.push(fila); fila = []; necesita = w; }
+      fila.push({id: id, w: w, h: h});
+      ancho = necesita;
+    });
+    if(fila.length) filas.push(fila);
+    var total = 0;
+    filas.forEach(function(f){
+      var suma = 0, alto = 0;
+      f.forEach(function(x){ suma += x.w; });
+      f.k = Math.min(1.6, (W - AIRE * (f.length - 1)) / suma);
+      f.forEach(function(x){ alto = Math.max(alto, x.h * f.k); });
+      total += alto;
+    });
+    var huecos = AIRE * Math.max(0, filas.length - 1);
+    var ajuste = (total + huecos > disponible && total > 0) ? (disponible - huecos) / total : 1;
+    var y = 0, out = {};
+    filas.forEach(function(f){
+      var kk = f.k * ajuste, anchoFila = AIRE * (f.length - 1), alto = 0;
+      f.forEach(function(x){ anchoFila += x.w * kk; });
+      var x0 = Math.max(0, (W - anchoFila) / 2);
+      f.forEach(function(x){
+        out[x.id] = [x0, y, x.w * kk, x.h * kk];
+        x0 += x.w * kk + AIRE;
+        alto = Math.max(alto, x.h * kk);
+      });
+      y += alto + AIRE;
+    });
+    return out;
+  }
+
+  function rectDe(id){ return cfg.rects[id] || defecto[id]; }
+
+  // Pone un cuadro en su rectangulo: la caja a ese tamaño y el contenido
+  // escalado entero, centrado dentro.
+  function poner(c, r){
+    c.style.left = r[0] + "px"; c.style.top = r[1] + "px";
+    c.style.width = r[2] + "px"; c.style.height = r[3] + "px";
+    c.style.transform = "";
+    var b = c.querySelector(".cuerpo");
+    if(!b) return;
+    var w0 = dw(c), h0 = dh(c), e = Math.min(r[2] / w0, r[3] / h0);
+    b.style.width = w0 + "px"; b.style.height = h0 + "px";
+    b.style.transform = "translate(" + ((r[2] - w0 * e) / 2).toFixed(1) + "px," +
+      ((r[3] - h0 * e) / 2).toFixed(1) + "px) scale(" + e.toFixed(4) + ")";
+  }
+
+  function acomodar(){
+    // El tamaño VISIBLE, no innerWidth/innerHeight: esos crecen cuando algo
+    // se desborda, y aqui lo que se desborda es justo lo que se esta
+    // colocando. En pantalla dividida (507x600) medido en el radio: inner
+    // 637x754 y creciendo en cada vuelta.
+    var vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    if(!vw || !vh) return;
+    k = vh / ALTO;
+    var V = vw / k;
+    if(V > ANCHO){ k = Math.min(vw / ANCHO, vh / ALTO); V = ANCHO; }
+    var estrecho = V < ESTRECHO;
+    document.body.classList.toggle("estrecho", estrecho);
+
+    L.style.width = V + "px";
+    L.style.transform = "translate(-50%,-50%) scale(" + k + ")";
+    F.style.width = V + "px";
+    if(R) R.style.width = V + "px";
+
+    W = V - 2 * PAD;
+    var arriba = PAD + (H ? H.offsetHeight : 44) + AIRE;
+    var disponible = ALTO - arriba - PAD;
+    C.style.height = disponible + "px";
+
+    // En media pantalla no se reparten cuadros: va el cuadro unico, escalado
+    // para que quepa entero a lo ancho Y a lo alto.
+    if(estrecho && K && KI){
+      cerrarEdicion();
+      K.style.height = disponible + "px";
+      var s = Math.min(W / KI.offsetWidth, disponible / KI.offsetHeight);
+      KI.style.transform = "scale(" + s + ")";
+      KI.style.left = Math.max(0, (W - KI.offsetWidth * s) / 2) + "px";
+      return;
+    }
+
+    defecto = filasDeFabrica(disponible);
+    var fondo = 0;
+    cuadros.forEach(function(c){
+      var id = c.getAttribute("data-cuadro");
+      c.classList.toggle("oculto", oculto(id));
+      if(oculto(id)) return;
+      var r = rectDe(id);
+      if(!r) return;
+      poner(c, r);
+      fondo = Math.max(fondo, r[1] + r[3]);
+    });
+    A.style.height = fondo + "px";
+    colocarSeleccion();
+  }
+
+  // ------------------------------------------------------------------
+  // EDITAR UN CUADRO: sostener el dedo encima lo selecciona.
+  //
+  // Los mandos que ya tienen su propio toque —las cuatro ruedas, que abren
+  // el calibrador; los botones del motor— quedan fuera: un dedo sostenido
+  // ahi hace lo suyo de siempre y no esto.
+  var MS_EDITAR = 700, HOLGURA = 12;
+  var esperando = null, x0 = 0, y0 = 0, editando = null, panel = null;
+  var sel = null, medida = null, arrastre = null;
+  var PUNTOS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+  function propio(t){
+    return t && t.closest && t.closest("#ll0,#ll1,#ll2,#ll3,.btn,.diagbtn,.hbtn,[role=button],button,.edicion,#cal,#seleccion");
+  }
+
+  function avisar(abierta){
+    try{ if(window.Puente && Puente.edicionCuadroVisible) Puente.edicionCuadroVisible(abierta); }catch(e){}
+  }
+
+  // La primera vez que se toca algo, se fijan los rectangulos de TODOS los
+  // cuadros a la vista: asi mover uno no recoloca a los demas.
+  function fijarTodos(){
+    cuadros.forEach(function(c){
+      var id = c.getAttribute("data-cuadro");
+      if(!oculto(id) && !cfg.rects[id] && defecto[id]){
+        cfg.rects[id] = defecto[id].map(function(n){ return Math.round(n); });
+      }
+    });
+  }
+
+  // El panel va en la mitad de la pantalla que el cuadro deja libre.
+  function colocarPanel(){
+    if(!editando || !panel) return;
+    var r = editando.getBoundingClientRect();
+    var abajo = (r.top + r.bottom) / 2 <= document.documentElement.clientHeight / 2;
+    panel.classList.toggle("abajo", abajo);
+    panel.classList.toggle("arriba", !abajo);
+  }
+
+  function colocarSeleccion(){
+    if(!editando || !sel) return;
+    var r = rectDe(editando.getAttribute("data-cuadro"));
+    if(!r) return;
+    sel.style.left = r[0] + "px"; sel.style.top = r[1] + "px";
+    sel.style.width = r[2] + "px"; sel.style.height = r[3] + "px";
+    medida.textContent = Math.round(r[2]) + " × " + Math.round(r[3]);
+    colocarPanel();
+  }
+
+  function cerrarEdicion(){
+    if(!editando) return;
+    avisar(false);
+    editando.classList.remove("editando");
+    if(panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    if(sel && sel.parentNode) sel.parentNode.removeChild(sel);
+    panel = null; sel = null; medida = null; arrastre = null;
+    editando = null;
+    document.body.classList.remove("editando-cuadros");
+  }
+
+  function boton(txt, clase, accion){
+    var b = document.createElement("div");
+    b.className = "b " + (clase || "");
+    b.setAttribute("role", "button");
+    b.textContent = txt;
+    b.addEventListener("click", function(ev){ ev.stopPropagation(); accion(); });
+    return b;
+  }
+
+  // El iman: un borde que pasa cerca (8 px de diseño) del borde de otro
+  // cuadro —o de su borde mas el aire de siempre—, o del borde del tablero,
+  // se pega. Asi alinear a ojo sale alineado de verdad.
+  function cercano(v, lista){
+    var mejor = null, d = IMAN;
+    lista.forEach(function(t){ var dd = Math.abs(v - t); if(dd <= d){ d = dd; mejor = t; } });
+    return mejor;
+  }
+
+  function iman(r, id, modo){
+    var x = r[0], y = r[1], w = r[2], h = r[3];
+    var xs = [0, W], ys = [0];
+    cuadros.forEach(function(c){
+      var o = c.getAttribute("data-cuadro");
+      if(o === id || oculto(o)) return;
+      var q = rectDe(o); if(!q) return;
+      xs.push(q[0], q[0] + q[2], q[0] - AIRE, q[0] + q[2] + AIRE);
+      ys.push(q[1], q[1] + q[3], q[1] - AIRE, q[1] + q[3] + AIRE);
+    });
+    if(modo === "mover"){
+      var a = cercano(x, xs), b = cercano(x + w, xs);
+      if(a !== null && (b === null || Math.abs(a - x) <= Math.abs(b - x - w))) x = a;
+      else if(b !== null) x = b - w;
+      var c2 = cercano(y, ys), d2 = cercano(y + h, ys);
+      if(c2 !== null && (d2 === null || Math.abs(c2 - y) <= Math.abs(d2 - y - h))) y = c2;
+      else if(d2 !== null) y = d2 - h;
+      x = Math.max(0, Math.min(x, W - w));
+      y = Math.max(0, y);
+    } else {
+      if(modo.indexOf("w") >= 0){ var iz = cercano(x, xs); if(iz !== null){ w += x - iz; x = iz; } }
+      if(modo.indexOf("e") >= 0){ var de = cercano(x + w, xs); if(de !== null) w = de - x; }
+      if(modo.indexOf("n") >= 0){ var ar = cercano(y, ys); if(ar !== null){ h += y - ar; y = ar; } }
+      if(modo.indexOf("s") >= 0){ var ab = cercano(y + h, ys); if(ab !== null) h = ab - y; }
+      if(x < 0){ w += x; x = 0; }
+      if(y < 0){ h += y; y = 0; }
+      if(x + w > W) w = W - x;
+    }
+    return [Math.round(x), Math.round(y), Math.round(Math.max(MIN_W, w)), Math.round(Math.max(MIN_H, h))];
+  }
+
+  function empezarArrastre(ev){
+    if(!editando || !sel) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var id = editando.getAttribute("data-cuadro");
+    fijarTodos();
+    var p = ev.target && ev.target.getAttribute ? ev.target.getAttribute("data-p") : null;
+    arrastre = {id: id, modo: p || "mover", px: ev.clientX, py: ev.clientY, r: cfg.rects[id].slice()};
+    try{ sel.setPointerCapture(ev.pointerId); }catch(e){}
+    sel.classList.add("arrastrando");
+  }
+
+  function moverArrastre(ev){
+    if(!arrastre) return;
+    ev.preventDefault();
+    var dx = (ev.clientX - arrastre.px) / k, dy = (ev.clientY - arrastre.py) / k;
+    var r0 = arrastre.r, m = arrastre.modo;
+    var x = r0[0], y = r0[1], w = r0[2], h = r0[3];
+    if(m === "mover"){ x += dx; y += dy; }
+    else {
+      if(m.indexOf("w") >= 0){ x += dx; w -= dx; }
+      if(m.indexOf("e") >= 0){ w += dx; }
+      if(m.indexOf("n") >= 0){ y += dy; h -= dy; }
+      if(m.indexOf("s") >= 0){ h += dy; }
+      // Al llegar al minimo, el borde contrario se queda quieto.
+      if(w < MIN_W){ if(m.indexOf("w") >= 0) x -= MIN_W - w; w = MIN_W; }
+      if(h < MIN_H){ if(m.indexOf("n") >= 0) y -= MIN_H - h; h = MIN_H; }
+    }
+    var r = iman([x, y, w, h], arrastre.id, m);
+    cfg.rects[arrastre.id] = r;
+    poner(editando, r);
+    A.style.height = Math.max(parseFloat(A.style.height) || 0, r[1] + r[3]) + "px";
+    colocarSeleccion();
+  }
+
+  function terminarArrastre(){
+    if(!arrastre) return;
+    arrastre = null;
+    if(sel) sel.classList.remove("arrastrando");
+    guardar();
+    acomodar();
+  }
+
+  function abrirEdicion(c){
+    cerrarEdicion();
+    // En media pantalla va el cuadro unico: no hay cuadros que mover.
+    if(document.body.classList.contains("estrecho")) return;
+    editando = c;
+    var id = c.getAttribute("data-cuadro");
+    c.classList.add("editando");
+    document.body.classList.add("editando-cuadros");
+
+    sel = document.createElement("div");
+    sel.id = "seleccion";
+    PUNTOS.forEach(function(pt){
+      var d = document.createElement("div");
+      d.className = "punto p-" + pt;
+      d.setAttribute("data-p", pt);
+      sel.appendChild(d);
+    });
+    medida = document.createElement("div");
+    medida.className = "medida";
+    sel.appendChild(medida);
+    sel.addEventListener("pointerdown", empezarArrastre);
+    sel.addEventListener("pointermove", moverArrastre);
+    sel.addEventListener("pointerup", terminarArrastre);
+    sel.addEventListener("pointercancel", terminarArrastre);
+    A.appendChild(sel);
+
+    var ed = document.createElement("div");
+    ed.className = "edicion";
+    var t = document.createElement("div");
+    t.className = "t";
+    t.textContent = (c.getAttribute("data-nombre") || id) + " · arrastra los puntos";
+    ed.appendChild(t);
+    var f = document.createElement("div"); f.className = "fila";
+    f.appendChild(boton("Tamaño original", "", function(){
+      delete cfg.rects[id]; guardar(); acomodar();
+    }));
+    f.appendChild(boton("Ocultar", "peligro", function(){
+      if(cfg.ocultos.indexOf(id) < 0) cfg.ocultos.push(id);
+      cerrarEdicion(); guardar(); acomodar();
+    }));
+    if(cfg.ocultos.length){
+      f.appendChild(boton("Mostrar ocultos (" + cfg.ocultos.length + ")", "", function(){
+        cfg.ocultos = []; guardar(); acomodar(); abrirEdicion(c);
+      }));
+    }
+    f.appendChild(boton("Listo", "listo", cerrarEdicion));
+    ed.appendChild(f);
+    document.body.appendChild(ed);
+    panel = ed;
+    colocarSeleccion();
+    avisar(true);
+  }
+
+  function soltar(){ if(esperando){ clearTimeout(esperando); esperando = null; } }
+
+  cuadros.forEach(function(c){
+    function empezar(ev){
+      if(editando === c || propio(ev.target)) return;
+      var p = ev.touches ? ev.touches[0] : ev;
+      x0 = p.clientX; y0 = p.clientY;
+      soltar();
+      esperando = setTimeout(function(){ esperando = null; abrirEdicion(c); }, MS_EDITAR);
+    }
+    function moverDedo(ev){
+      if(!esperando) return;
+      var p = ev.touches ? ev.touches[0] : ev;
+      if(Math.abs(p.clientX - x0) > HOLGURA || Math.abs(p.clientY - y0) > HOLGURA) soltar();
+    }
+    c.addEventListener("touchstart", empezar, {passive: true});
+    c.addEventListener("touchmove", moverDedo, {passive: true});
+    c.addEventListener("touchend", soltar);
+    c.addEventListener("touchcancel", soltar);
+    // Con raton, para poder probarlo en la laptop.
+    c.addEventListener("mousedown", empezar);
+    c.addEventListener("mousemove", moverDedo);
+    c.addEventListener("mouseup", soltar);
+  });
+
+  // Tocar fuera del cuadro seleccionado (y fuera del panel) termina la edicion.
+  document.addEventListener("pointerdown", function(ev){
+    if(!editando || arrastre) return;
+    var t = ev.target;
+    if(t && t.closest && (t.closest("#seleccion") || t.closest(".edicion"))) return;
+    cerrarEdicion();
+  }, true);
+
+  // La tecla de ATRAS (Kotlin) cierra la edicion antes que el tablero.
+  window.cuadrosCerrarEdicion = function(){ var habia = !!editando; cerrarEdicion(); return habia; };
+  // Al volver al tablero (por ejemplo, de Ajustes, donde se pueden restaurar).
+  window.cuadrosRecargar = function(){ cerrarEdicion(); cargar(); acomodar(); };
+
+  acomodar();
+  window.addEventListener("resize", acomodar);
+  window.addEventListener("orientationchange", acomodar);
+})();
+</script>
+
+<script>
+/* ============================================================
+   S2000 — motor de actualizacion.
+   Los datos llegan del servicio por Puente.estado(), que devuelve
+   JSON. Regla dura heredada del proyecto: un valor ausente o rancio
+   se pinta "--" y APAGADO. Nunca un cero, nunca un valor por defecto:
+   un 0 y un "no lo se" significan cosas opuestas.
+   ============================================================ */
+(function(){
+  var GUION = "\u2013\u2013";
+
+  function el(id){ return document.getElementById(id); }
+
+  // Potencia con signo y color. Positivo = entra energia al banco.
+  function potencia(id, w){
+    var e = el(id); if(!e) return;
+    e.classList.remove("carga", "descarga");
+    if(w === null || w === undefined){
+      e.textContent = GUION; e.style.color = "var(--mute)"; return;
+    }
+    e.style.color = "";
+    e.textContent = (w > 0 ? "+" : "") + w;
+    if(w > 0) e.classList.add("carga");
+    else if(w < 0) e.classList.add("descarga");
+  }
+
+  function pip(id, vivo){
+    var e = el(id); if(!e) return;
+    if(vivo === true) e.classList.remove("hollow"); else e.classList.add("hollow");
+  }
+
+  // pinta un valor; null/undefined -> "--" y el bloque se apaga
+  // Separacion de miles con espacio FINO. Un "2270" se lee peor que un
+  // "2 270" de reojo, y la coma se confunde con el decimal.
+  function miles(n){
+    var t = String(n), neg = t.charAt(0) === "-";
+    if(neg) t = t.slice(1);
+    if(t.length <= 3) return (neg ? "-" : "") + t;
+    return (neg ? "-" : "") + t.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function set(id, v, dec){
+    var e = el(id); if(!e) return;
+    if(v === null || v === undefined){
+      e.textContent = GUION;
+      e.style.color = "var(--mute)";
+      return;
+    }
+    e.style.color = "";
+    if(typeof v === "number"){
+      e.textContent = (dec !== undefined) ? v.toFixed(dec) : miles(v);
+    } else {
+      e.textContent = String(v);
+    }
+  }
+
+  // EL RELOJ DE MEZCLA. 10 a 20 AFR sobre 240 grados (de -120 a +120,
+  // contados desde arriba). Cada lectura fija un OBJETIVO y la aguja va
+  // hacia el con un resorte amortiguado —rigidez 60, amortiguacion 11:
+  // llega en menos de un segundo con un pelo de rebote—, como la de un
+  // instrumento analogico. Sin dato, descansa en el tope izquierdo y la cara
+  // se apaga: nunca una aguja apuntando a un 14.7 que nadie midio.
+  // Con el radio caliente no se anima: salta, y no gasta un cuadro mas.
+  var AFR_MIN = 10, AFR_MAX = 20, BARRIDO = 120, TOPE = -128;
+  var agAng = TOPE, agVel = 0, agObj = TOPE, agViva = false, agT = 0, agUltimo = 0;
+
+  function anguloAfr(afr){
+    var t = (Math.min(AFR_MAX, Math.max(AFR_MIN, afr)) - AFR_MIN) / (AFR_MAX - AFR_MIN);
+    return -BARRIDO + t * 2 * BARRIDO;
+  }
+
+  function puntoAfr(afr, r){
+    var a = (anguloAfr(afr) - 90) * Math.PI / 180;
+    return [50 + r * Math.cos(a), 50 + r * Math.sin(a)];
+  }
+
+  // La escala se dibuja UNA vez, con la misma cuenta que mueve la aguja.
+  (function escalaAfr(){
+    var g = el("afr-escala"); if(!g) return;
+    function f(n){ return n.toFixed(2); }
+    function arco(a0, a1, r, clase){
+      var p = puntoAfr(a0, r), q = puntoAfr(a1, r);
+      var grande = (anguloAfr(a1) - anguloAfr(a0)) > 180 ? 1 : 0;
+      return '<path class="zr ' + clase + '" d="M' + f(p[0]) + ' ' + f(p[1]) +
+        ' A' + r + ' ' + r + ' 0 ' + grande + ' 1 ' + f(q[0]) + ' ' + f(q[1]) + '"/>';
+    }
+    var h = arco(10, 14, 39, "rica") + arco(14, 15.4, 39, "este") + arco(15.4, 20, 39, "pobre");
+    for(var i = 0; i <= 20; i++){
+      var v = AFR_MIN + i * 0.5, mayor = (i % 2 === 0);
+      var a = puntoAfr(v, mayor ? 31 : 33), b = puntoAfr(v, 36.2);
+      h += '<line class="' + (mayor ? "tkM" : "tk") + '" x1="' + f(a[0]) + '" y1="' + f(a[1]) +
+        '" x2="' + f(b[0]) + '" y2="' + f(b[1]) + '"/>';
+      if(mayor && (v % 2 === 0)){
+        var n = puntoAfr(v, 25);
+        h += '<text class="num" x="' + f(n[0]) + '" y="' + f(n[1]) + '">' + v + '</text>';
+      }
+    }
+    var e0 = puntoAfr(14.7, 29), e1 = puntoAfr(14.7, 37.2);
+    h += '<line class="tkst" x1="' + f(e0[0]) + '" y1="' + f(e0[1]) + '" x2="' + f(e1[0]) + '" y2="' + f(e1[1]) + '"/>';
+    g.innerHTML = h;
+  })();
+
+  function girar(a){
+    var g = el("afr-aguja");
+    if(g) g.setAttribute("transform", "rotate(" + a.toFixed(2) + " 50 50)");
+  }
+
+  function pasoAguja(t){
+    if(!el("afr-aguja")){ agViva = false; return; }
+    var dt = agT ? Math.min(0.05, (t - agT) / 1000) : 0.016;
+    agT = t;
+    agUltimo = Date.now();
+    agVel += (60 * (agObj - agAng) - 11 * agVel) * dt;
+    agAng += agVel * dt;
+    if(Math.abs(agObj - agAng) < 0.04 && Math.abs(agVel) < 0.04){
+      agAng = agObj; agVel = 0; girar(agAng); agViva = false; agT = 0;
+      return;
+    }
+    girar(agAng);
+    requestAnimationFrame(pasoAguja);
+  }
+
+  function aguja(afr){
+    var tx = el("afr-val"), cara = el("afr");
+    var hay = !(afr === null || afr === undefined);
+    if(tx){ tx.textContent = hay ? afr.toFixed(1) : GUION; tx.style.fill = hay ? "" : "var(--mute)"; }
+    if(cara) cara.classList.toggle("apagado", !hay);
+    agObj = hay ? anguloAfr(afr) : TOPE;
+    var caliente = false;
+    try{ caliente = !!(window.Puente && Puente.msEntreCuadros && Puente.msEntreCuadros() > 700); }catch(e){}
+    if(caliente){ agAng = agObj; agVel = 0; girar(agAng); return; }
+    // Si el WebView se pauso a media animacion, el cuadro pedido no llega
+    // nunca y la aguja se quedaria quieta para siempre: se vuelve a arrancar.
+    if(agViva && Date.now() - agUltimo > 400) agViva = false;
+    if(!agViva && el("afr-aguja")){
+      agViva = true; agT = 0; agUltimo = Date.now();
+      requestAnimationFrame(pasoAguja);
+    }
+  }
+
+  // Nombres cortos de rueda, en el mismo orden que los manda el servicio.
+  var RUEDAS = ["DI", "DD", "TI", "TD"];
+
+  // Las alertas llegan del servicio ya decididas, con los limites de
+  // Ajustes y la presion calibrada: "baja", "alta" o "caliente".
+  var PALABRA = {baja: "Baja", alta: "Alta", caliente: "Caliente"};
+  var PLURAL = {baja: "bajas", alta: "altas", caliente: "calientes"};
+
+  // La bandera de la casilla. El boceto solo trae la de la trasera derecha;
+  // las demas se hacen la primera vez que hacen falta, con el mismo dibujo.
+  function bandera(i){
+    var f = el("ll" + i + "-flag");
+    if(f) return f;
+    var t = el("ll" + i + "-t");
+    if(!t || !t.parentNode) return null;
+    f = document.createElement("span");
+    f.className = "flag"; f.id = "ll" + i + "-flag"; f.style.display = "none";
+    f.innerHTML = '<svg viewBox="0 0 16 16"><path d="M8 2.4 15 13.6H1z"/>' +
+      '<path d="M8 6.6v3.4"/><circle cx="8" cy="11.9" r=".75" fill="currentColor" stroke="none"/>' +
+      '</svg><span class="flag-txt"></span>';
+    t.parentNode.appendChild(f);
+    return f;
+  }
+
+  function llanta(i, psi, temp, alerta){
+    set("ll" + i + "-psi", psi);
+    set("ll" + i + "-t", temp);
+    var c = el("ll" + i);
+    if(c){
+      // Baja o alta: grita la presion. Caliente: grita la temperatura.
+      c.classList.toggle("alarm", alerta === "baja" || alerta === "alta");
+      c.classList.toggle("calor", alerta === "caliente");
+    }
+    // La bandera se enciende y se apaga con el dato, nunca queda pintada
+    // de adorno.
+    var f = alerta ? bandera(i) : el("ll" + i + "-flag");
+    if(f){
+      f.style.display = alerta ? "" : "none";
+      var ft = f.querySelector(".flag-txt");
+      if(ft && alerta) ft.textContent = PALABRA[alerta] || alerta;
+    }
+  }
+
+  // El aviso de la cabecera nombra la PRIMERA rueda en alerta. Si no hay
+  // ninguna, no se pinta: un aviso permanente es un aviso que se ignora.
+  // Con varias se cuentan: "2 llantas altas", o "3 llantas en alerta" si
+  // no les pasa lo mismo.
+  function avisoLlantas(alertas){
+    var texto = "";
+    if(alertas.length){
+      var tipo = alertas[0][1], iguales = true;
+      for(var k = 1; k < alertas.length; k++) if(alertas[k][1] !== tipo) iguales = false;
+      texto = alertas.length === 1
+        ? (RUEDAS[alertas[0][0]] + " " + (PALABRA[tipo] || tipo).toLowerCase())
+        : (alertas.length + " llantas " + (iguales ? (PLURAL[tipo] || "en alerta") : "en alerta"));
+    }
+    // El mismo aviso en la tarjeta de llantas y en el cuadro unico.
+    [["ll-aviso", "ll-aviso-txt"], ["cmp-ll-aviso", "cmp-ll-aviso"]].forEach(function(p){
+      var chip = el(p[0]), txt = el(p[1]);
+      if(!chip) return;
+      chip.style.display = texto ? "" : "none";
+      if(txt && texto) txt.textContent = texto;
+    });
+  }
+
+  // La barra de carga de un banco. Sin dato, vacia: nunca llena por defecto.
+  function barra(id, soc){
+    var e = el(id); if(!e) return;
+    e.style.width = (soc === null || soc === undefined ? 0 : Math.max(0, Math.min(100, soc))) + "%";
+  }
+
+  // EL CUADRO UNICO de la pantalla dividida: lo mismo que los cuadros, sin
+  // el aceite. Se pinta siempre, se vea o no: son unos pocos
+  // textos, y asi al dividir la pantalla ya esta al dia.
+  function pintarCompacto(d, al){
+    set("cmp-viv-soc", d.vivSoc); set("cmp-viv-v", d.vivV, 1);
+    potencia("cmp-viv-w", d.vivW); set("cmp-viv-t", d.vivT); set("cmp-viv-h", d.vivH);
+    barra("cmp-viv-bar", d.vivSoc);
+    set("cmp-arr-soc", d.arrSoc); set("cmp-arr-v", d.arrV, 1);
+    potencia("cmp-arr-w", d.arrW); set("cmp-arr-t", d.arrT);
+    barra("cmp-arr-bar", d.arrSoc);
+
+    var psi = [d.ll0psi, d.ll1psi, d.ll2psi, d.ll3psi], tmp = [d.ll0t, d.ll1t, d.ll2t, d.ll3t];
+    for(var i = 0; i < 4; i++){
+      set("cmp-ll" + i + "-psi", psi[i]); set("cmp-ll" + i + "-t", tmp[i]);
+      var c = el("cmp-ll" + i);
+      if(c){
+        c.classList.toggle("alarm", al[i] === "baja" || al[i] === "alta");
+        c.classList.toggle("calor", al[i] === "caliente");
+      }
+    }
+
+    set("cmp-rpm", d.rpm); set("cmp-afr", d.afr, 1);
+    set("cmp-agua", d.agua); set("cmp-aire", d.aire); set("cmp-carga", d.carga);
+    set("cmp-map", d.mapPsi, 1); set("cmp-avance", d.avance); set("cmp-trim", d.trim);
+
+    var vt = el("cmp-vtec");
+    if(vt){
+      vt.textContent = d.vtec === true ? "Enganchado" : (d.vtec === false ? "En reposo" : GUION);
+      if(vt.parentNode) vt.parentNode.classList.toggle("on", d.vtec === true);
+    }
+    var mil = el("cmp-mil");
+    if(mil){
+      var cod = (d.codigos === null || d.codigos === undefined) ? GUION : d.codigos;
+      mil.textContent = d.mil === true ? ("Luz de avería · " + cod + " códigos")
+        : (d.mil === false ? ("Sin avería · " + cod + " códigos") : GUION);
+      mil.classList.toggle("on", d.mil === true);
+    }
+  }
+
+  // EL TACOMETRO. Escala, VTEC, zona de cambio y roja salen del perfil del
+  // motor (d.rpmMax, d.rpmVtec...). Las marcas se ponen UNA vez, cuando llegan.
+  var escalaPuesta = false;
+  function marcarEscala(d){
+    if(escalaPuesta || !d.rpmMax) return;
+    var max = d.rpmMax, esc = el("t-escala"), rail = el("t-rail");
+    if(!esc || !rail) return;
+    escalaPuesta = true;
+    for(var r = 0; r <= max; r += 1000){
+      var x = (r / max * 100).toFixed(2) + "%";
+      var e = document.createElement("span");
+      e.textContent = String(r / 1000);
+      e.style.left = x;
+      esc.appendChild(e);
+      if(r > 0 && r < max){
+        var t = document.createElement("div");
+        t.className = "tick"; t.style.left = x;
+        rail.appendChild(t);
+      }
+    }
+    function zona(id, desde, hasta){
+      var z = el(id); if(!z || !desde) return;
+      z.style.left = (desde / max * 100).toFixed(2) + "%";
+      z.style.width = ((Math.min(hasta, max) - desde) / max * 100).toFixed(2) + "%";
+      z.style.display = "block";
+    }
+    zona("t-zc", d.rpmCambio, d.rpmRoja || max);
+    zona("t-zr", d.rpmRoja, max);
+    var mv = el("t-mv");
+    if(mv && d.rpmVtec){ mv.style.left = (d.rpmVtec / max * 100).toFixed(2) + "%"; mv.style.display = "block"; }
+    var lim = el("t-lim");
+    if(lim) lim.textContent = "VTEC " + miles(d.rpmVtec) + " · roja " + miles(d.rpmRoja);
+  }
+
+  function tacometro(d){
+    marcarEscala(d);
+    var max = d.rpmMax || 0, rpm = d.rpm;
+    set("t-rpm", rpm);
+    var hay = (rpm !== null && rpm !== undefined && max > 0);
+    var p = hay ? Math.max(0, Math.min(1, rpm / max)) : 0;
+    var nivel = !hay ? "" : (d.rpmRoja && rpm >= d.rpmRoja ? "roja"
+      : (d.rpmCambio && rpm >= d.rpmCambio ? "cambio" : ""));
+    var f = el("t-fill");
+    if(f){ f.style.width = (p * 100).toFixed(1) + "%"; f.className = "tfill " + nivel; }
+    var cb = el("cmp-rpm-bar"); if(cb) cb.style.width = (p * 100).toFixed(1) + "%";
+    var n = el("t-num"); if(n) n.className = "tnum " + nivel;
+    // VTEC: aqui SI es un acontecimiento. Se enciende el cuadro entero.
+    var card = el("c-tach"); if(card) card.classList.toggle("vtec-on", d.vtec === true);
+    // En el cuadro unico el chip dice VTEC y se enciende; no "enganchado".
+    var cv = el("cmp-vtec"); if(cv) cv.textContent = "VTEC";
+    set("t-carga", d.carga); set("t-map", d.mapPsi, 1); set("t-avance", d.avance);
+    var mil = el("m-mil"), fila = el("m-milrow");
+    if(mil) mil.textContent = d.mil === true ? "Luz de avería encendida"
+      : (d.mil === false ? "Sin avería" : GUION);
+    if(fila) fila.classList.toggle("on", d.mil === true);
+    set("m-cod", d.codigos);
+  }
+
+  function pintar(d){
+    // --- motor ---
+    set("m-agua", d.agua);   set("m-rpm", d.rpm);
+    set("m-aire", d.aire);   set("m-carga", d.carga);
+    set("m-map", d.mapPsi, 1); set("m-avance", d.avance);
+    set("m-trim", d.trim);
+    aguja(d.afr);
+
+    // --- VTEC: deducido de rpm + carga ---
+    var v = el("vtec"), vs = el("vtec-st");
+    if(v){
+      if(d.vtec === true){ v.classList.add("on"); if(vs) vs.textContent = "Enganchado"; }
+      else if(d.vtec === false){ v.classList.remove("on"); if(vs) vs.textContent = "En reposo"; }
+      else { v.classList.remove("on"); if(vs) vs.textContent = GUION; }
+    }
+
+    // --- llantas ---
+    var al = [d.ll0al, d.ll1al, d.ll2al, d.ll3al], alertas = [];
+    llanta(0, d.ll0psi, d.ll0t, al[0]);
+    llanta(1, d.ll1psi, d.ll1t, al[1]);
+    llanta(2, d.ll2psi, d.ll2t, al[2]);
+    llanta(3, d.ll3psi, d.ll3t, al[3]);
+    for(var r = 0; r < 4; r++) if(al[r]) alertas.push([r, al[r]]);
+    avisoLlantas(alertas);
+    pintarCompacto(d, al);
+    tacometro(d);
+
+    // --- arranque, aceite, radio ---
+    // El rotulo y la MAC de cada banco vienen del servicio, no del HTML.
+    // Escritos a mano, la tarjeta llego a decir que era una bateria que no
+    // era: el vigilante viejo leia el primer JBD que veia.
+    set("viv-nom", d.vivNom); set("viv-mac", d.vivMac);
+    set("arr-nom", d.arrNom); set("arr-mac", d.arrMac);
+    set("arr-soc", d.arrSoc);
+    set("arr-v", d.arrV, 1);
+    potencia("arr-w", d.arrW);    set("arr-t", d.arrT);
+    var ab = el("arr-bar");
+    if(ab) ab.style.width = (d.arrSoc === null || d.arrSoc === undefined ? 0 : d.arrSoc) + "%";
+    set("ace-km", d.aceKm); set("ace-h", d.aceH);
+    set("hd-cod", d.codigos);
+
+    // Los puntos de enlace. Hueco = esa fuente NO esta dando datos.
+    // Importa mas de lo que parece: si muere el receptor de las llantas, las
+    // cuatro presiones se quedan congeladas en el ultimo valor bueno y
+    // siguen pareciendo correctas. El punto es lo unico que lo delata.
+    pip("pip-arr", d.okArr);   pip("pip-viv", d.okViv);
+    pip("pip-nev", d.okNev);   pip("pip-tpms", d.okTpms);
+    pip("pip-obd", d.okObd);
+    var mil = el("hd-mil");
+    if(mil) mil.textContent = (d.mil === true) ? "Luz de avería" : (d.mil === false ? "Sin avería" : GUION);
+    set("ace-pct", d.acePct);
+    // La barra del aceite sigue al dato: lo que queda en color, lo gastado
+    // rayado. Sin dato, vacia y sin raya: nunca un porcentaje de adorno.
+    var acb = el("ace-bar"), ach = el("ace-hatch"), acp = d.acePct;
+    var sinAce = (acp === null || acp === undefined);
+    var acx = sinAce ? 0 : Math.max(0, Math.min(100, acp));
+    if(acb) acb.style.width = acx + "%";
+    if(ach){ ach.style.display = sinAce ? "none" : ""; ach.style.left = acx + "%"; }
+    set("radio-t", d.radioC);
+  }
+
+  // Los mandos. Un toque encola el comando; el boton NO se pinta al
+  // tocarlo. Se pinta cuando el aparato contesta con su estado nuevo — un
+  // boton que se enciende porque el tablero mando algo miente igual que un
+  // valor inventado, y aqui el enlace falla una de cada tres veces.
+  function mando(id, accion){
+    var e = el(id); if(!e) return;
+    e.addEventListener("click", function(){
+      try{ accion(); }catch(err){}
+    });
+  }
+  mando("btn-diag", function(){ Puente.abrirDiagnostico(); });
+  mando("btn-config", function(){ Puente.abrirConfiguracion(); });
+  mando("btn-tuerca", function(){ Puente.abrirConfiguracion(); });
+  mando("btn-codigos", function(){ if(Puente.abrirCodigos) Puente.abrirCodigos(); });
+  mando("btn-cerrar", function(){ if(Puente.cerrar) Puente.cerrar(); });
+
+
+  // ============ CALIBRACION DE LLANTAS ============
+  //
+  // Se abre SOSTENIENDO el dedo sobre una rueda, 600 ms. Un toque suelto no
+  // puede cambiar una calibracion: a media curva se toca cualquier cosa.
+  var RUEDA_CAL = 0;
+  var SOSTENIDO = null;
+  var MS_SOSTENER = 600;
+
+  function calAbrir(i){
+    RUEDA_CAL = i;
+    var t = el("cal-tit");
+    if(t) t.textContent = "Calibrar " + (RUEDAS[i] || "");
+    calRefrescar();
+    var c = el("cal"); if(c) c.classList.add("abierto");
+    // Se le dice a la app que hay un modal delante, para que la tecla de
+    // ATRAS lo cierre a el y no el tablero entero. En la variante Canvas eso
+    // sale gratis —la vista sabe lo que pinta—; aqui hay que contarlo, o los
+    // dos tableros del mismo carro responden distinto al mismo boton.
+    try{ if(window.Puente && Puente.calibradorVisible) Puente.calibradorVisible(true); }catch(e){}
+  }
+
+  function calRefrescar(){
+    try{
+      var v = Puente.ajusteLlanta(RUEDA_CAL);
+      var e = el("cal-val");
+      if(e) e.textContent = (v > 0 ? "+" : "") + v.toFixed(1);
+      var m = el("cal-marca");
+      if(m) m.classList.toggle("si", Puente.calibrarTodasALaVez() === true);
+    }catch(err){}
+  }
+
+  function calCerrar(){
+    var c = el("cal"); if(c) c.classList.remove("abierto");
+    try{ if(window.Puente && Puente.calibradorVisible) Puente.calibradorVisible(false); }catch(e){}
+  }
+
+  /* La UNICA funcion que sale de este cierre. La necesita la tecla de ATRAS,
+     que se maneja en Kotlin y llama por `evaluateJavascript`: sin exportarla,
+     la llamada revienta con un ReferenceError QUE NADIE VE —evaluateJavascript
+     se traga el error— y el modal se queda abierto tapando el tablero. */
+  window.calCerrar = calCerrar;
+
+  // El gesto sostenido sobre cada casilla de rueda.
+  (function(){
+    for(var i = 0; i < 4; i++){
+      (function(idx){
+        var caja = el("ll" + idx);
+        if(!caja) return;
+        function empezar(ev){
+          if(ev && ev.preventDefault) ev.preventDefault();
+          if(SOSTENIDO) clearTimeout(SOSTENIDO);
+          SOSTENIDO = setTimeout(function(){ SOSTENIDO = null; calAbrir(idx); }, MS_SOSTENER);
+        }
+        function soltar(){
+          if(SOSTENIDO){ clearTimeout(SOSTENIDO); SOSTENIDO = null; }
+        }
+        caja.addEventListener("touchstart", empezar, {passive:false});
+        caja.addEventListener("touchend", soltar);
+        caja.addEventListener("touchcancel", soltar);
+        // Con raton, para poder probarlo en la laptop.
+        caja.addEventListener("mousedown", empezar);
+        caja.addEventListener("mouseup", soltar);
+        caja.addEventListener("mouseleave", soltar);
+      })(i);
+    }
+  })();
+
+  mando("cal-menos", function(){ try{ Puente.calibrarLlanta(RUEDA_CAL, -1); }catch(e){} calRefrescar(); });
+  mando("cal-mas",   function(){ try{ Puente.calibrarLlanta(RUEDA_CAL,  1); }catch(e){} calRefrescar(); });
+  mando("cal-cero",  function(){ try{ Puente.calibrarACero(RUEDA_CAL); }catch(e){} calRefrescar(); });
+  mando("cal-listo", calCerrar);
+  mando("cal-todas", function(){
+    try{
+      var ahora = Puente.calibrarTodasALaVez() === true;
+      Puente.ponerCalibrarTodasALaVez(!ahora);
+    }catch(e){}
+    calRefrescar();
+  });
+
+
+  // Solo se repinta si la lectura CAMBIO: con el carro parado el JSON es el
+  // mismo vuelta tras vuelta, y parsearlo y reescribir el DOM era trabajo
+  // tirado. Lo rancio ya lo resuelve el servicio (EstadoDelTablero), asi que
+  // el JSON no depende de la hora y comparar el texto basta.
+  // El ritmo lo pone el termometro del radio, como en la variante Canvas,
+  // con 700 ms de suelo: mas seguido no se lee mejor manejando.
+  var ultimo = null;
+  function tic(){
+    var ms = 700;
+    try{
+      if(window.Puente && Puente.estado){
+        var s = Puente.estado();
+        if(s !== ultimo){ ultimo = s; pintar(JSON.parse(s)); }
+        if(Puente.msEntreCuadros) ms = Math.max(700, Puente.msEntreCuadros());
+      }
+    }catch(e){ /* nunca romper el repintado por un dato malo */ }
+    setTimeout(tic, ms);
+  }
+  tic();
+})();
+</script>
+
+
+
+</body>
+</html>

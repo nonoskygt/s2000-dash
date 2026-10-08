@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  "S2000 Dash" — el tablero del Honda S2000. Los componentes compartidos
+  (tablero, configuracion, diagnostico, servicio) llegan del manifiesto de
+  :comun; aqui solo va lo que hace que esta app sea ESTA app.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Para armar el APK confirmador. Nivel "signature": solo funciona
+         porque ambos APK llevan el mismo certificado. -->
+    <uses-permission android:name="com.nonosky.s2000dash.permission.ARMAR" />
+
+    <queries>
+        <package android:name="com.nonosky.s2000dash.confirmador" />
+    </queries>
+
+    <application
+        android:name=".S2000DashApp"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.Oscuro">
+
+        <!-- Lo que el confirmador ve en pantalla; sin esto no hay forma de
+             depurarlo, porque no tiene pantalla ni logs accesibles. -->
+        <receiver
+            android:name="com.nonosky.carsoc.ConfirmadorReceiver"
+            android:exported="true"
+            android:permission="com.nonosky.s2000dash.permission.ARMAR">
+            <intent-filter>
+                <action android:name="com.nonosky.s2000dash.CONFIRMADOR_DICE" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
