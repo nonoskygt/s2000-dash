@@ -82,6 +82,14 @@ interface Motor {
     val rpmFuelCut: Int
     val rpmShiftAmber: Int
     val vtecMinLoadPct: Int
+
+    /**
+     * Carga minima (%) para ENGANCHAR el VTEC. Para SEGUIR enganchado basta
+     * [vtecMinLoadPct]. Hay motores que entran con mucha mas carga de la que
+     * necesitan para mantenerse: con una sola cifra, el tablero lo daba por
+     * enganchado antes de tiempo. Por omision, la misma que para seguir.
+     */
+    val vtecCargaEnganche: Int get() = vtecMinLoadPct
     val staleAfterMs: Long
     val coolantHighC: Int
     val coolantTibioC: Int
@@ -91,14 +99,15 @@ interface Motor {
     val afrMax: Float
 
     /**
-     * ¿Esta enganchado el VTEC? Con histeresis de revoluciones: si ya estaba
-     * enganchado, suelta por debajo de [rpmVtecSuelta] y no de [rpmVtec].
+     * ¿Esta enganchado el VTEC? Con histeresis de revoluciones Y de carga:
+     * para entrar hacen falta [rpmVtec] y [vtecCargaEnganche]; ya enganchado,
+     * sigue mientras haya [rpmVtecSuelta] y [vtecMinLoadPct].
      * Sin dato de carga se asume que no: una lampara encendida cuando no lo
      * esta enseña a desconfiar del tablero.
      */
     fun vtecActive(rpm: Int?, loadPct: Int?, enganchadoAntes: Boolean = false): Boolean {
         if (rpm == null || loadPct == null) return false
-        if (loadPct < vtecMinLoadPct) return false
-        return if (enganchadoAntes) rpm >= rpmVtecSuelta else rpm >= rpmVtec
+        return if (enganchadoAntes) rpm >= rpmVtecSuelta && loadPct >= vtecMinLoadPct
+        else rpm >= rpmVtec && loadPct >= vtecCargaEnganche
     }
 }
